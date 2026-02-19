@@ -96,6 +96,121 @@
   color: #5f6368;
 }
 
+.reddit-arousal-modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 2147483647;
+}
+
+.reddit-arousal-modal-overlay.visible {
+  display: flex;
+}
+
+.reddit-arousal-modal {
+  width: min(460px, 100%);
+  background: #ffffff;
+  border: 1px solid #d0d7de;
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+  padding: 16px;
+}
+
+.reddit-arousal-modal-title {
+  margin: 0 0 8px;
+  font-size: 18px;
+  line-height: 1.2;
+  color: #1f2328;
+}
+
+.reddit-arousal-modal-message {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: #3d444d;
+}
+
+.reddit-arousal-modal-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #57606a;
+}
+
+.reddit-arousal-modal-emotion-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.reddit-arousal-modal-emotion-btn {
+  border: 1px solid #d0d7de;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #24292f;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.reddit-arousal-modal-emotion-btn.active {
+  background: #ff4500;
+  border-color: #ff4500;
+  color: #ffffff;
+}
+
+.reddit-arousal-modal-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 14px;
+  color: #1f2328;
+  resize: vertical;
+  min-height: 84px;
+}
+
+.reddit-arousal-modal-input:focus {
+  outline: none;
+  border-color: #0969da;
+  box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.15);
+}
+
+.reddit-arousal-modal-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.reddit-arousal-modal-btn {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.reddit-arousal-modal-btn.secondary {
+  background: #f6f8fa;
+  border-color: #d0d7de;
+  color: #24292f;
+}
+
+.reddit-arousal-modal-btn.primary {
+  background: #0969da;
+  border-color: #0969da;
+  color: #ffffff;
+}
+
 .reddit-emotion-bar {
   margin-top: 0;
   padding: 0;

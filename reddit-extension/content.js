@@ -7,6 +7,7 @@ const persistentLowScoreCache = new Map();
 let classifierPromise = null;
 let classifierUnavailable = false;
 let lowScoreCacheLoadPromise = null;
+let arousalDialogState = null;
 
 const MAX_TEXT_LENGTH = 2000;
 const LOW_SCORE_CACHE_KEY = "lowScoreConcentrationCache";
@@ -35,6 +36,12 @@ function loadEmotion(postId, callback) {
   });
 }
 
+function loadEmotionAsync(postId) {
+  return new Promise((resolve) => {
+    loadEmotion(postId, (value) => resolve(value || null));
+  });
+}
+
 function stopBubble(event) {
   event.stopPropagation();
 }
@@ -42,6 +49,170 @@ function stopBubble(event) {
 function blockNavigation(event) {
   event.preventDefault();
   event.stopPropagation();
+}
+
+function closeArousalDialog(result) {
+  if (!arousalDialogState) return;
+
+  const { overlay, input, resolver } = arousalDialogState;
+  if (typeof resolver === "function") {
+    resolver({
+      ...result,
+      selectedEmotion: arousalDialogState.selectedEmotion,
+    });
+  }
+
+  overlay.classList.remove("visible");
+  input.value = "";
+  arousalDialogState.selectedEmotion = null;
+  arousalDialogState.emotionButtons.forEach((btn) =>
+    btn.classList.remove("active"),
+  );
+  arousalDialogState.resolver = null;
+}
+
+function ensureArousalDialog() {
+  if (arousalDialogState) return arousalDialogState;
+
+  const overlay = document.createElement("div");
+  overlay.className = "reddit-arousal-modal-overlay";
+
+  const modal = document.createElement("div");
+  modal.className = "reddit-arousal-modal";
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+
+  const title = document.createElement("h3");
+  title.className = "reddit-arousal-modal-title";
+  title.textContent = "High Arousal Warning";
+
+  const message = document.createElement("p");
+  message.className = "reddit-arousal-modal-message";
+
+  const emotionLabel = document.createElement("label");
+  emotionLabel.className = "reddit-arousal-modal-label";
+  emotionLabel.textContent = "Select emotion";
+
+  const emotionPicker = document.createElement("div");
+  emotionPicker.className = "reddit-arousal-modal-emotion-picker";
+
+  const emotionButtons = [];
+  EMOTIONS.forEach((emotion) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "reddit-arousal-modal-emotion-btn";
+    button.textContent = emotion.label;
+    button.dataset.emotionKey = emotion.key;
+
+    button.addEventListener("click", () => {
+      const nextValue =
+        arousalDialogState.selectedEmotion === emotion.key ? null : emotion.key;
+
+      arousalDialogState.selectedEmotion = nextValue;
+      emotionButtons.forEach((btn) => {
+        const isActive = btn.dataset.emotionKey === nextValue;
+        btn.classList.toggle("active", isActive);
+      });
+    });
+
+    emotionButtons.push(button);
+    emotionPicker.appendChild(button);
+  });
+
+  const inputLabel = document.createElement("label");
+  inputLabel.className = "reddit-arousal-modal-label";
+  inputLabel.textContent = "Optional note";
+
+  const input = document.createElement("textarea");
+  input.className = "reddit-arousal-modal-input";
+  input.rows = 3;
+  input.placeholder = "Enter any notes before continuing...";
+
+  const actions = document.createElement("div");
+  actions.className = "reddit-arousal-modal-actions";
+
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.className = "reddit-arousal-modal-btn secondary";
+  cancelBtn.textContent = "Cancel";
+
+  const continueBtn = document.createElement("button");
+  continueBtn.type = "button";
+  continueBtn.className = "reddit-arousal-modal-btn primary";
+  continueBtn.textContent = "Continue";
+
+  actions.appendChild(cancelBtn);
+  actions.appendChild(continueBtn);
+  modal.appendChild(title);
+  modal.appendChild(message);
+  modal.appendChild(emotionLabel);
+  modal.appendChild(emotionPicker);
+  modal.appendChild(inputLabel);
+  modal.appendChild(input);
+  modal.appendChild(actions);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) {
+      closeArousalDialog({ proceed: false, text: input.value });
+    }
+  });
+
+  cancelBtn.addEventListener("click", () => {
+    closeArousalDialog({ proceed: false, text: input.value });
+  });
+
+  continueBtn.addEventListener("click", () => {
+    closeArousalDialog({ proceed: true, text: input.value });
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (!arousalDialogState?.resolver) return;
+    if (event.key !== "Escape") return;
+
+    event.preventDefault();
+    closeArousalDialog({
+      proceed: false,
+      text: arousalDialogState.input.value,
+    });
+  });
+
+  arousalDialogState = {
+    overlay,
+    message,
+    input,
+    emotionButtons,
+    selectedEmotion: null,
+    resolver: null,
+  };
+
+  return arousalDialogState;
+}
+
+function showArousalDialog(percent, preselectedEmotion = null) {
+  const dialog = ensureArousalDialog();
+  if (dialog.resolver) {
+    return Promise.resolve({ proceed: false, text: "", selectedEmotion: null });
+  }
+
+  dialog.message.textContent =
+    `This post has a high arousal score (${percent}%). ` +
+    "Quick check in: How does this make you feel? Do you want to proceed to the post?";
+  dialog.overlay.classList.add("visible");
+  dialog.selectedEmotion = preselectedEmotion;
+  dialog.emotionButtons.forEach((btn) => {
+    const isActive = btn.dataset.emotionKey === preselectedEmotion;
+    btn.classList.toggle("active", isActive);
+  });
+
+  requestAnimationFrame(() => {
+    dialog.input.focus();
+  });
+
+  return new Promise((resolve) => {
+    dialog.resolver = resolve;
+  });
 }
 
 function getHeuristicScore(text) {
@@ -509,24 +680,64 @@ function isLikelyPostNavigationClick(post, event) {
   return post.contains(anchor);
 }
 
+function getNavigationAnchorFromClick(post, event) {
+  const target = event.target;
+  if (!(target instanceof Element)) return null;
+
+  if (target.closest(".reddit-sentiment-panel")) return null;
+
+  const anchor = target.closest("a[href]");
+  if (!anchor) return null;
+  if (anchor.href && anchor.href.includes("/comments/")) return anchor;
+
+  return post.contains(anchor) ? anchor : null;
+}
+
+function applyEmotionSelectionToPost(post, emotionKey) {
+  const emotionBar = post.querySelector(".reddit-emotion-bar");
+  if (!emotionBar) return;
+
+  emotionBar.querySelectorAll(".reddit-emotion-btn").forEach((button) => {
+    const isActive =
+      button.textContent?.trim().toLowerCase() === emotionKey?.toLowerCase();
+    button.classList.toggle("active", Boolean(isActive));
+  });
+}
+
 function attachArousalClickGuard(post, postId) {
   if (post.dataset.arousalGuardAttached === "true") return;
 
-  post.addEventListener("click", (event) => {
+  post.addEventListener("click", async (event) => {
     if (event.defaultPrevented) return;
     if (!isLikelyPostNavigationClick(post, event)) return;
+
+    const anchor = getNavigationAnchorFromClick(post, event);
+    if (!anchor?.href) return;
 
     const score = arousalCache.get(postId);
     if (typeof score !== "number" || score <= 0.5) return;
 
+    event.preventDefault();
+    event.stopPropagation();
+
     const percent = Math.round(score * 100);
-    const shouldContinue = window.confirm(
-      `This post has a high arousal score (${percent}%). Continue to open it?`,
+    const currentEmotion = await loadEmotionAsync(postId);
+    const { proceed, selectedEmotion } = await showArousalDialog(
+      percent,
+      currentEmotion,
     );
 
-    if (!shouldContinue) {
-      event.preventDefault();
-      event.stopPropagation();
+    if (!proceed) return;
+
+    if (selectedEmotion) {
+      saveEmotion(postId, selectedEmotion);
+      applyEmotionSelectionToPost(post, selectedEmotion);
+    }
+
+    if (anchor.target === "_blank" || event.ctrlKey || event.metaKey) {
+      window.open(anchor.href, "_blank", "noopener");
+    } else {
+      window.location.href = anchor.href;
     }
   });
 

@@ -103,7 +103,7 @@
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(10, 27, 32, 0.42);
   z-index: 2147483647;
 }
 
@@ -112,79 +112,108 @@
 }
 
 .reddit-arousal-modal {
-  width: min(460px, 100%);
-  background: #ffffff;
-  border: 1px solid #d0d7de;
-  border-radius: 12px;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
-  padding: 16px;
+  --sea-glass-dark: #4a9f9e;
+  --sea-glass-mid: #95cfc9;
+  --sea-glass-light: #f1f6f5;
+  --sea-glass-text: #2f4f52;
+  --sea-glass-ink: #20383c;
+  width: min(760px, 100%);
+  background: var(--sea-glass-light);
+  border: 1px solid #c4dcda;
+  border-radius: 8px;
+  box-shadow: 0 18px 44px rgba(14, 33, 36, 0.26);
+  padding: 18px;
+}
+
+.reddit-arousal-modal [hidden] {
+  display: none !important;
 }
 
 .reddit-arousal-modal-title {
-  margin: 0 0 8px;
-  font-size: 18px;
+  margin: 0 0 10px;
+  font-size: 20px;
   line-height: 1.2;
-  color: #1f2328;
+  color: var(--sea-glass-ink);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-family: "Avenir Next Condensed", "Arial Narrow", "Trebuchet MS", sans-serif;
 }
 
 .reddit-arousal-modal-message {
-  margin: 0 0 12px;
-  font-size: 14px;
-  color: #3d444d;
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--sea-glass-text);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  line-height: 1.5;
+  font-family: "Avenir Next Condensed", "Arial Narrow", "Trebuchet MS", sans-serif;
+}
+
+.reddit-arousal-modal-section[hidden] {
+  display: none;
 }
 
 .reddit-arousal-modal-label {
   display: block;
   margin-bottom: 6px;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  color: #57606a;
+  color: #3e6668;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-family: "Avenir Next Condensed", "Arial Narrow", "Trebuchet MS", sans-serif;
 }
 
 .reddit-arousal-modal-emotion-picker {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .reddit-arousal-modal-emotion-btn {
-  border: 1px solid #d0d7de;
-  border-radius: 999px;
-  background: #ffffff;
-  color: #24292f;
-  padding: 6px 10px;
-  font-size: 12px;
-  font-weight: 600;
+  border: 1px solid #8fcbc8;
+  border-radius: 4px;
+  background: #e5f2f0;
+  color: #2f5759;
+  padding: 7px 10px;
+  font-size: 11px;
+  font-weight: 700;
   cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-family: "Avenir Next Condensed", "Arial Narrow", "Trebuchet MS", sans-serif;
 }
 
 .reddit-arousal-modal-emotion-btn.active {
-  background: #ff4500;
-  border-color: #ff4500;
+  background: #4a9f9e;
+  border-color: #4a9f9e;
   color: #ffffff;
 }
 
 .reddit-arousal-modal-input {
   width: 100%;
   box-sizing: border-box;
-  border: 1px solid #d0d7de;
-  border-radius: 8px;
+  border: 1px solid #a7cecc;
+  border-radius: 6px;
   padding: 10px;
-  font-size: 14px;
-  color: #1f2328;
+  font-size: 13px;
+  color: #244447;
   resize: vertical;
-  min-height: 84px;
+  min-height: 76px;
+  background: #ffffff;
+  font-family: "Avenir Next Condensed", "Arial Narrow", "Trebuchet MS", sans-serif;
+  letter-spacing: 0.05em;
 }
 
 .reddit-arousal-modal-input:focus {
   outline: none;
-  border-color: #0969da;
-  box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.15);
+  border-color: #4a9f9e;
+  box-shadow: 0 0 0 2px rgba(74, 159, 158, 0.25);
 }
 
 .reddit-arousal-modal-actions {
-  margin-top: 12px;
+  margin-top: 10px;
   display: flex;
   justify-content: flex-end;
   gap: 8px;
@@ -192,23 +221,124 @@
 
 .reddit-arousal-modal-btn {
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 4px;
   padding: 8px 12px;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
   cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-family: "Avenir Next Condensed", "Arial Narrow", "Trebuchet MS", sans-serif;
 }
 
 .reddit-arousal-modal-btn.secondary {
-  background: #f6f8fa;
-  border-color: #d0d7de;
-  color: #24292f;
+  background: #ebf5f3;
+  border-color: #9bcac6;
+  color: #2b5355;
+}
+
+.reddit-arousal-modal-btn.neutral {
+  background: #d7ece9;
+  border-color: #86bdb8;
+  color: #275356;
 }
 
 .reddit-arousal-modal-btn.primary {
-  background: #0969da;
-  border-color: #0969da;
+  background: #4a9f9e;
+  border-color: #4a9f9e;
   color: #ffffff;
+}
+
+.reddit-arousal-reappraisal-title {
+  margin: 0 0 6px;
+  color: #214548;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-weight: 700;
+  font-family: "Avenir Next Condensed", "Arial Narrow", "Trebuchet MS", sans-serif;
+}
+
+.reddit-arousal-reappraisal-text {
+  margin: 0 0 8px;
+  color: #2f5a5d;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  line-height: 1.5;
+  font-family: "Avenir Next Condensed", "Arial Narrow", "Trebuchet MS", sans-serif;
+}
+
+.reddit-arousal-reappraisal-need {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border: 1px solid #a9d2ce;
+  background: #d9ece9;
+  color: #21494c;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  line-height: 1.45;
+  font-family: "Avenir Next Condensed", "Arial Narrow", "Trebuchet MS", sans-serif;
+}
+
+.reddit-arousal-guide {
+  margin: 4px 0 12px;
+  border: 1px solid #b6d7d4;
+  background: #d8ece9;
+}
+
+.reddit-arousal-guide-row {
+  display: grid;
+  grid-template-columns: 1.05fr 2.35fr 2fr;
+  gap: 5px;
+  padding: 5px;
+}
+
+.reddit-arousal-guide-header {
+  background: #ecf6f4;
+  border-bottom: 1px solid #b6d7d4;
+}
+
+.reddit-arousal-guide-cell {
+  background: #a9d8d3;
+  color: #2f4f52;
+  padding: 9px 10px;
+  min-height: 56px;
+  font-size: 12px;
+  line-height: 1.45;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-family: "Avenir Next Condensed", "Arial Narrow", "Trebuchet MS", sans-serif;
+}
+
+.reddit-arousal-guide-cell.is-header {
+  background: #4a9f9e;
+  color: #ffffff;
+  min-height: 0;
+  padding: 8px 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+}
+
+.reddit-arousal-guide-row.is-active .reddit-arousal-guide-cell {
+  background: #9fd2cd;
+  color: #1f4144;
+}
+
+@media (max-width: 640px) {
+  .reddit-arousal-modal {
+    width: 100%;
+    padding: 14px;
+  }
+
+  .reddit-arousal-guide-row {
+    grid-template-columns: 1fr;
+  }
+
+  .reddit-arousal-guide-cell {
+    min-height: 0;
+  }
 }
 
 .reddit-emotion-bar {

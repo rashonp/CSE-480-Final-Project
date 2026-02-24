@@ -7,7 +7,15 @@
   "content_scripts": [
     {
       "matches": ["https://www.reddit.com/*"],
-      "js": ["content.js"],
+      "js": [
+        "content.js",
+        "utils.js",
+        "storage.js",
+        "toxicity.js",
+        "arousal.js",
+        "ui.js",
+        "bootstrap.js"
+      ],
       "css": ["styles.css"],
       "run_at": "document_idle"
     }

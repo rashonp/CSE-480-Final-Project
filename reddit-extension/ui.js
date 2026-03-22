@@ -24,12 +24,14 @@
     },
     surprised: {
       emotion: "SURPRISE",
-      meaning: "Something unexpected happened while overall safety still feels intact.",
+      meaning:
+        "Something unexpected happened while overall safety still feels intact.",
       need: "Pause, orient, and re-establish your sense of safety.",
     },
     love: {
       emotion: "LOVE",
-      meaning: "You feel connection, care, and closeness with someone or something.",
+      meaning:
+        "You feel connection, care, and closeness with someone or something.",
       need: "Nurture the bond. Express appreciation and stay connected.",
     },
     default: {
@@ -41,6 +43,12 @@
 
   const getEmotionGuidance = (emotionKey) =>
     EMOTION_GUIDANCE[emotionKey] || EMOTION_GUIDANCE.default;
+
+  const formatPercent = (value) =>
+    typeof value === "number" ? `${Math.round(value * 100)}%` : "n/a";
+
+  const COMMENT_ACTION_PATTERN =
+    /reply|comment|add a comment|leave a comment|join the conversation|content creation input/i;
 
   app.closeArousalDialog = (result) => {
     const dialog = app.state.arousalDialogState;
@@ -100,7 +108,8 @@
     guide.className = "reddit-arousal-guide";
 
     const guideHeader = document.createElement("div");
-    guideHeader.className = "reddit-arousal-guide-row reddit-arousal-guide-header";
+    guideHeader.className =
+      "reddit-arousal-guide-row reddit-arousal-guide-header";
 
     const guideHeaderEmotion = document.createElement("div");
     guideHeaderEmotion.className = "reddit-arousal-guide-cell is-header";
@@ -245,7 +254,7 @@
     const continueToPostBtn = document.createElement("button");
     continueToPostBtn.type = "button";
     continueToPostBtn.className = "reddit-arousal-modal-btn primary";
-    continueToPostBtn.textContent = "Continue to Post";
+    continueToPostBtn.textContent = "Continue to Comment";
 
     const setStep = (step) => {
       const inCheckIn = step === "checkin";
@@ -276,7 +285,7 @@
           "Pause to identify what you're feeling before deciding.";
       } else {
         message.textContent =
-          "Before opening the post, write one small first step that supports your unmet need.";
+          "Before commenting, write one small first step that supports your unmet need.";
       }
     };
 
@@ -364,7 +373,7 @@
 
     dialog.modal.dataset.checkinMessage =
       `This post has a high arousal score (${percent}%). ` +
-      "Pause to identify what you're feeling, what it means, and what you need before continuing.";
+      "Pause to identify what you're feeling, what it means, and what you need before commenting.";
     dialog.message.textContent = dialog.modal.dataset.checkinMessage;
     dialog.overlay.classList.add("visible");
     dialog.selectedEmotion = preselectedEmotion;
@@ -386,48 +395,277 @@
 
   app.createSignalRow = () => {
     const row = document.createElement("div");
-    row.className = "reddit-toxicity-row";
-
-    const toxicityBadge = document.createElement("span");
-    toxicityBadge.className = "reddit-toxicity-badge pending";
-    toxicityBadge.textContent = "Toxicity: analyzing...";
+    row.className = "reddit-signal-row";
 
     const arousalBadge = document.createElement("span");
     arousalBadge.className = "reddit-arousal-badge pending";
     arousalBadge.textContent = "Arousal: analyzing...";
 
-    row.appendChild(toxicityBadge);
     row.appendChild(arousalBadge);
-    return { row, toxicityBadge, arousalBadge };
+    return { row, arousalBadge };
   };
 
-  app.isLikelyPostNavigationClick = (post, event) => {
-    const target = event.target;
-    if (!(target instanceof Element)) return false;
+  app.ensureArousalTooltip = (panel) => {
+    let tooltip = panel.querySelector(".reddit-arousal-tooltip");
+    if (tooltip) return tooltip;
 
-    if (target.closest(".reddit-sentiment-panel")) return false;
-
-    const anchor = target.closest("a[href]");
-    if (!anchor) return false;
-
-    const href = anchor.getAttribute("href") || "";
-    if (href.includes("/comments/")) return true;
-    if (anchor.href && anchor.href.includes("/comments/")) return true;
-
-    return post.contains(anchor);
+    tooltip = document.createElement("div");
+    tooltip.className = "reddit-arousal-tooltip";
+    tooltip.hidden = true;
+    panel.appendChild(tooltip);
+    return tooltip;
   };
 
-  app.getNavigationAnchorFromClick = (post, event) => {
-    const target = event.target;
-    if (!(target instanceof Element)) return null;
+  app.renderArousalTooltip = (post, panel, details) => {
+    const tooltip = app.ensureArousalTooltip(panel);
 
-    if (target.closest(".reddit-sentiment-panel")) return null;
+    if (!details) {
+      tooltip.hidden = true;
+      tooltip.innerHTML = "";
+      panel.dataset.hasArousalTooltip = "false";
+      post.dataset.hasArousalTooltip = "false";
+      return;
+    }
 
-    const anchor = target.closest("a[href]");
-    if (!anchor) return null;
-    if (anchor.href && anchor.href.includes("/comments/")) return anchor;
+    const llmStatus = details.llmLabel
+      ? `${formatPercent(details.llmScore)} (${details.llmLabel})`
+      : formatPercent(details.llmScore);
 
-    return post.contains(anchor) ? anchor : null;
+    const lines = [
+      `<div class="reddit-arousal-tooltip-title">Arousal Breakdown</div>`,
+      `<div class="reddit-arousal-tooltip-section">Final Score</div>`,
+      `<div class="reddit-arousal-tooltip-line is-final"><span>Final</span><strong>${formatPercent(details.finalScore)}</strong></div>`,
+      `<div class="reddit-arousal-tooltip-divider"></div>`,
+      `<div class="reddit-arousal-tooltip-section">Components</div>`,
+      `<div class="reddit-arousal-tooltip-line"><span>Base</span><strong>${formatPercent(details.heuristicScore)}</strong></div>`,
+      `<div class="reddit-arousal-tooltip-line"><span>LLM</span><strong>${llmStatus}</strong></div>`,
+    ];
+
+    if (details.primaryEmotion) {
+      lines.push(
+        `<div class="reddit-arousal-tooltip-meta">Primary emotion: ${details.primaryEmotion}</div>`,
+      );
+    }
+
+    if (details.llmReason) {
+      lines.push(
+        `<div class="reddit-arousal-tooltip-reason">${details.llmReason}</div>`,
+      );
+    }
+
+    tooltip.innerHTML = lines.join("");
+    tooltip.hidden = false;
+    panel.dataset.hasArousalTooltip = "true";
+    post.dataset.hasArousalTooltip = "true";
+  };
+
+  app.getEventPathElements = (event) => {
+    const path =
+      typeof event?.composedPath === "function" ? event.composedPath() : [];
+    const elements = path.filter((node) => node instanceof Element);
+    if (elements.length > 0) return elements;
+
+    return event?.target instanceof Element ? [event.target] : [];
+  };
+
+  app.getCommentIntent = (event) => {
+    const elements = app.getEventPathElements(event);
+    if (elements.length === 0) return null;
+
+    for (const element of elements) {
+      if (
+        element.closest(".reddit-sentiment-panel") ||
+        element.closest(".reddit-arousal-modal-overlay")
+      ) {
+        return null;
+      }
+    }
+
+    for (const element of elements) {
+      const isComposerHost =
+        element.matches?.("shreddit-simple-composer") ||
+        element.closest?.("shreddit-simple-composer");
+      const looksLikeTextbox =
+        element.matches?.(
+          'textarea, [contenteditable="true"], [role="textbox"], [name="content"]',
+        ) ||
+        element.matches?.(
+          '[placeholder*="conversation" i], [placeholder*="comment" i], [aria-placeholder*="conversation" i], [aria-placeholder*="comment" i], [aria-label*="content creation input" i]',
+        );
+
+      if (isComposerHost || looksLikeTextbox) {
+        return {
+          kind: "composer",
+          element: isComposerHost
+            ? element.closest("shreddit-simple-composer") || element
+            : element,
+        };
+      }
+    }
+
+    for (const element of elements) {
+      const action = element.closest?.('button, [role="button"], a[href]');
+      if (!action) continue;
+
+      const label = [
+        action.getAttribute("aria-label"),
+        action.getAttribute("data-testid"),
+        action.getAttribute("title"),
+        action.textContent,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      if (!COMMENT_ACTION_PATTERN.test(label)) continue;
+
+      return {
+        kind: "reply",
+        element: action,
+      };
+    }
+
+    return null;
+  };
+
+  app.getCommentGuardContext = (event) => {
+    const elements = app.getEventPathElements(event);
+
+    for (const element of elements) {
+      const containingPost = element.closest?.("shreddit-post");
+      if (!containingPost) continue;
+
+      const postId = app.getPostId(containingPost);
+      if (postId) return { post: containingPost, postId };
+    }
+
+    const pagePost = document.querySelector("shreddit-post");
+    if (!pagePost) return null;
+
+    const postId =
+      app.getPostId(pagePost) || app.normalizePostUrl(window.location.href);
+    if (!postId) return null;
+
+    return { post: pagePost, postId };
+  };
+
+  app.ensureArousalDetails = async (post, postId) => {
+    let details = app.state.arousalCache.get(postId);
+    if (details && typeof details.finalScore === "number") {
+      return details;
+    }
+
+    const text = app.extractPostText(post);
+    if (!text) return null;
+
+    details = await app.computeArousalDetails(post, postId, text);
+    app.state.arousalCache.set(postId, details);
+
+    const badge = post.querySelector(".reddit-arousal-badge");
+    const panel = post.querySelector(".reddit-sentiment-panel");
+    if (badge && panel) {
+      const percent = Math.round(details.finalScore * 100);
+      badge.className = `reddit-arousal-badge ${app.getScoreClass(details.finalScore)}`;
+      badge.textContent = `Arousal: ${percent}%`;
+      app.renderArousalTooltip(post, panel, details);
+    }
+
+    return details;
+  };
+
+  app.blockCommentEvent = (event, intent) => {
+    if (event.cancelable) {
+      event.preventDefault();
+    }
+    event.stopPropagation();
+    if (typeof event.stopImmediatePropagation === "function") {
+      event.stopImmediatePropagation();
+    }
+    if (
+      intent.kind === "composer" &&
+      typeof intent.element.blur === "function"
+    ) {
+      intent.element.blur();
+    }
+  };
+
+  app.resumeCommentIntent = (intent) => {
+    if (!intent?.element?.isConnected) return;
+
+    app.state.commentGuardBypassTargets.add(intent.element);
+
+    requestAnimationFrame(() => {
+      if (!intent.element.isConnected) return;
+
+      if (intent.kind === "composer") {
+        if (typeof intent.element.click === "function") {
+          intent.element.click();
+        }
+        if (typeof intent.element.focus === "function") {
+          intent.element.focus();
+        }
+        return;
+      }
+
+      if (typeof intent.element.click === "function") {
+        intent.element.click();
+      }
+    });
+  };
+
+  app.handleCommentGuardEvent = async (event) => {
+    const intent = app.getCommentIntent(event);
+    if (!intent) return;
+
+    const context = app.getCommentGuardContext(event);
+    if (!context?.post || !context?.postId) return;
+
+    if (!intent?.element) return;
+
+    const { post, postId } = context;
+
+    if (app.state.commentGuardBypassTargets.has(intent.element)) {
+      app.state.commentGuardBypassTargets.delete(intent.element);
+      return;
+    }
+
+    if (app.state.commentGuardActivePostIds.has(postId)) {
+      app.blockCommentEvent(event, intent);
+      return;
+    }
+
+    const details = await app.ensureArousalDetails(post, postId);
+    const score = details?.finalScore;
+    if (typeof score !== "number" || score <= 0.1) return;
+    if (await app.hasShownArousalPrompt(postId)) return;
+
+    app.blockCommentEvent(event, intent);
+    app.state.commentGuardActivePostIds.add(postId);
+
+    try {
+      const percent = Math.round(score * 100);
+      const currentEmotion = await app.loadEmotionAsync(postId);
+      const { proceed, selectedEmotion } = await app.showArousalDialog(
+        percent,
+        currentEmotion,
+      );
+
+      if (proceed) {
+        await app.markArousalPromptShown(postId);
+      }
+
+      if (!proceed) return;
+
+      if (selectedEmotion) {
+        app.saveEmotion(postId, selectedEmotion);
+        app.applyEmotionSelectionToPost(post, selectedEmotion);
+      }
+
+      app.resumeCommentIntent(intent);
+    } finally {
+      app.state.commentGuardActivePostIds.delete(postId);
+    }
   };
 
   app.applyEmotionSelectionToPost = (post, emotionKey) => {
@@ -441,81 +679,51 @@
     });
   };
 
-  app.attachArousalClickGuard = (post, postId) => {
-    if (post.dataset.arousalGuardAttached === "true") return;
+  app.attachGlobalArousalCommentGuard = () => {
+    if (document.body?.dataset.arousalCommentGuardAttached === "true") return;
 
-    post.addEventListener("click", async (event) => {
-      if (event.defaultPrevented) return;
-      if (!app.isLikelyPostNavigationClick(post, event)) return;
+    document.addEventListener(
+      "pointerdown",
+      async (event) => {
+        if (event.defaultPrevented) return;
+        await app.handleCommentGuardEvent(event);
+      },
+      true,
+    );
 
-      const anchor = app.getNavigationAnchorFromClick(post, event);
-      if (!anchor?.href) return;
+    document.addEventListener(
+      "click",
+      async (event) => {
+        if (event.defaultPrevented) return;
+        await app.handleCommentGuardEvent(event);
+      },
+      true,
+    );
 
-      const score = app.state.arousalCache.get(postId);
-      if (typeof score !== "number" || score <= 0.5) return;
-
-      event.preventDefault();
-      event.stopPropagation();
-
-      const percent = Math.round(score * 100);
-      const currentEmotion = await app.loadEmotionAsync(postId);
-      const { proceed, selectedEmotion } = await app.showArousalDialog(
-        percent,
-        currentEmotion,
-      );
-
-      if (!proceed) return;
-
-      if (selectedEmotion) {
-        app.saveEmotion(postId, selectedEmotion);
-        app.applyEmotionSelectionToPost(post, selectedEmotion);
-      }
-
-      if (anchor.target === "_blank" || event.ctrlKey || event.metaKey) {
-        window.open(anchor.href, "_blank", "noopener");
-      } else {
-        window.location.href = anchor.href;
-      }
-    });
-
-    post.dataset.arousalGuardAttached = "true";
+    document.body.dataset.arousalCommentGuardAttached = "true";
   };
 
-  app.renderToxicity = async (post, postId, badge) => {
-    const text = app.extractPostText(post);
-    if (!text) {
-      badge.className = "reddit-toxicity-badge error";
-      badge.textContent = "Toxicity: n/a";
-      return;
-    }
-
-    const score = await app.scorePost(postId, text);
-    if (!badge.isConnected) return;
-
-    const percent = Math.round(score * 100);
-    badge.className = `reddit-toxicity-badge ${app.getScoreClass(score)}`;
-    badge.textContent = `Toxicity: ${percent}%`;
-  };
-
-  app.renderArousal = async (post, postId, badge) => {
+  app.renderArousal = async (post, postId, badge, panel) => {
     const text = app.extractPostText(post);
     if (!text) {
       badge.className = "reddit-arousal-badge error";
       badge.textContent = "Arousal: n/a";
+      app.renderArousalTooltip(post, panel, null);
       return;
     }
 
-    let score = app.state.arousalCache.get(postId);
-    if (typeof score !== "number") {
-      score = await app.computeArousalScore(post, postId, text);
-      app.state.arousalCache.set(postId, score);
+    let details = app.state.arousalCache.get(postId);
+    if (!details || typeof details.finalScore !== "number") {
+      details = await app.computeArousalDetails(post, postId, text);
+      app.state.arousalCache.set(postId, details);
     }
 
     if (!badge.isConnected) return;
 
-    const percent = Math.round(score * 100);
-    badge.className = `reddit-arousal-badge ${app.getScoreClass(score)}`;
+    const percent = Math.round(details.finalScore * 100);
+    badge.className = `reddit-arousal-badge ${app.getScoreClass(details.finalScore)}`;
     badge.textContent = `Arousal: ${percent}%`;
+    app.renderArousalTooltip(post, panel, details);
   };
 
   app.createEmotionBar = (postId) => {
@@ -576,19 +784,18 @@
 
   app.injectIntoPosts = () => {
     const posts = document.querySelectorAll("shreddit-post");
+    app.attachGlobalArousalCommentGuard();
 
     posts.forEach((post) => {
       const postId = app.getPostId(post);
       if (!postId) return;
-
-      app.attachArousalClickGuard(post, postId);
 
       if (post.querySelector(".reddit-sentiment-panel")) return;
 
       const panel = document.createElement("div");
       panel.className = "reddit-sentiment-panel";
 
-      const { row, toxicityBadge, arousalBadge } = app.createSignalRow();
+      const { row, arousalBadge } = app.createSignalRow();
       const emotions = app.createEmotionBar(postId);
       panel.appendChild(row);
       panel.appendChild(emotions);
@@ -600,8 +807,7 @@
         post.appendChild(panel);
       }
 
-      app.renderToxicity(post, postId, toxicityBadge);
-      app.renderArousal(post, postId, arousalBadge);
+      app.renderArousal(post, postId, arousalBadge, panel);
     });
   };
 })();

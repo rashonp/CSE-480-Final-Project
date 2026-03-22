@@ -2,7 +2,7 @@
   const app = window.RedditEmotionExt;
   if (!app) return;
 
-  const { LOW_SCORE_CACHE_TTL_MS } = app.constants;
+  const { LOW_SCORE_CACHE_TTL_MS, LLM_AROUSAL_CACHE_TTL_MS } = app.constants;
 
   app.getPostId = (post) => {
     const link = post.querySelector('a[href*="/comments/"]');
@@ -216,13 +216,114 @@
     return concentration;
   };
 
-  app.computeArousalScore = async (post, postId, text) => {
+  app.computeHeuristicArousalScore = async (post, postId) => {
     const comments = app.getCommentCount(post);
     const score = Math.max(0, app.getPostScore(post));
     const ratioSignal = app.clamp01(comments / Math.max(score, 1));
-    // Reserved for future text-driven arousal signals.
-    void text;
     const lowScoreConcentration = await app.getLowScoreConcentration(postId);
     return app.clamp01(ratioSignal * 0.5 + lowScoreConcentration * 0.5);
+  };
+
+  app.extractArousalAnalysis = (payload) => {
+    const raw = Number(payload?.arousal_score);
+    if (!Number.isFinite(raw)) {
+      throw new Error("invalid-llm-arousal-score");
+    }
+
+    return {
+      arousal_score: app.clamp01(raw),
+      label: String(payload?.label || "medium"),
+      primary_emotion: String(payload?.primary_emotion || "other"),
+      reason: String(payload?.reason || "").trim(),
+    };
+  };
+
+  app.requestLlmArousalAnalysis = (text) =>
+    new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(
+        {
+          type: "reddit-emotion-arousal-analysis",
+          text,
+        },
+        (response) => {
+          const runtimeError = chrome.runtime.lastError;
+          if (runtimeError) {
+            reject(new Error(runtimeError.message));
+            return;
+          }
+
+          if (!response?.ok) {
+            reject(new Error(response?.error || "llm-arousal-request-failed"));
+            return;
+          }
+
+          resolve(response.data || {});
+        },
+      );
+    });
+
+  app.getLlmArousalAnalysis = async (postId, text) => {
+    const normalizedPostId = app.normalizePostUrl(postId);
+    await app.loadPersistentLlmArousalCache();
+
+    if (app.state.llmArousalCache.has(normalizedPostId)) {
+      return app.state.llmArousalCache.get(normalizedPostId);
+    }
+
+    const persisted = app.state.persistentLlmArousalCache.get(normalizedPostId);
+    if (persisted && Date.now() - persisted.ts <= LLM_AROUSAL_CACHE_TTL_MS) {
+      app.state.llmArousalCache.set(normalizedPostId, persisted);
+      return persisted;
+    }
+
+    const payload = await app.requestLlmArousalAnalysis(text);
+    const analysis = app.extractArousalAnalysis(payload);
+    const cacheEntry = {
+      score: analysis.arousal_score,
+      label: analysis.label,
+      primaryEmotion: analysis.primary_emotion,
+      reason: analysis.reason,
+      ts: Date.now(),
+    };
+
+    app.state.llmArousalCache.set(normalizedPostId, cacheEntry);
+    app.state.persistentLlmArousalCache.set(normalizedPostId, cacheEntry);
+    app.persistLlmArousalCache();
+    return cacheEntry;
+  };
+
+  app.computeArousalDetails = async (post, postId, text) => {
+    const heuristicPromise = app.computeHeuristicArousalScore(post, postId);
+    const [heuristicResult, llmResult] = await Promise.allSettled([
+      heuristicPromise,
+      app.getLlmArousalAnalysis(postId, text),
+    ]);
+
+    if (heuristicResult.status !== "fulfilled") {
+      throw heuristicResult.reason;
+    }
+
+    const heuristicScore = heuristicResult.value;
+    if (llmResult.status !== "fulfilled") {
+      return {
+        finalScore: heuristicScore,
+        heuristicScore,
+        llmScore: null,
+        llmReason: "LLM analysis unavailable.",
+        llmLabel: null,
+        primaryEmotion: null,
+      };
+    }
+
+    const llmAnalysis = llmResult.value;
+    const llmScore = app.clamp01(Number(llmAnalysis.score || 0));
+    return {
+      finalScore: app.clamp01(heuristicScore * 0.5 + llmScore * 0.5),
+      heuristicScore,
+      llmScore,
+      llmReason: llmAnalysis.reason || "",
+      llmLabel: llmAnalysis.label || null,
+      primaryEmotion: llmAnalysis.primaryEmotion || null,
+    };
   };
 })();

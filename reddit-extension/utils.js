@@ -45,4 +45,32 @@
       return postId;
     }
   };
+
+  app.extractPostText = (post) => {
+    const snippets = [];
+
+    const title = post.querySelector("h3")?.textContent?.trim() || "";
+    if (title) snippets.push(title);
+
+    const bodySelectors = [
+      '[slot="text-body"]',
+      'div[data-click-id="text"]',
+      "p",
+      "li",
+    ];
+
+    bodySelectors.forEach((selector) => {
+      post.querySelectorAll(selector).forEach((node) => {
+        const value = node.textContent?.trim() || "";
+        if (value) snippets.push(value);
+      });
+    });
+
+    const unique = Array.from(new Set(snippets));
+    const normalized = unique.join(" ").replace(/\s+/g, " ").trim();
+    const fallback = post.textContent?.replace(/\s+/g, " ").trim() || "";
+    const text = normalized || fallback;
+
+    return text.slice(0, app.constants.MAX_TEXT_LENGTH);
+  };
 })();

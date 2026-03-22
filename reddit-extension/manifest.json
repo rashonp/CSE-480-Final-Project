@@ -4,6 +4,10 @@
   "version": "1.1.0",
   "description": "Tag Reddit posts with emotions.",
   "permissions": ["storage"],
+  "host_permissions": ["http://127.0.0.1:8787/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": ["https://www.reddit.com/*"],
@@ -11,7 +15,6 @@
         "content.js",
         "utils.js",
         "storage.js",
-        "toxicity.js",
         "arousal.js",
         "ui.js",
         "bootstrap.js"

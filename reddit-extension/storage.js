@@ -6,6 +6,9 @@
     LOW_SCORE_CACHE_KEY,
     LOW_SCORE_CACHE_TTL_MS,
     LOW_SCORE_CACHE_MAX_ENTRIES,
+    PROFILE_ENTRIES_KEY,
+    PROFILE_ENTRIES_MAX,
+    USER_REPORTED_TRIGGERS_KEY,
     SHOWN_AROUSAL_PROMPTS_KEY,
     LLM_AROUSAL_CACHE_KEY,
     LLM_AROUSAL_CACHE_TTL_MS,
@@ -15,7 +18,13 @@
     persistentLowScoreCache,
     persistentLlmArousalCache,
     shownArousalPrompts,
+    profileEntries,
+    userReportedTriggers,
   } = app.state;
+
+  app.invalidateArousalDetails = () => {
+    app.state.arousalCache.clear();
+  };
 
   app.saveEmotion = (postId, emotion) => {
     chrome.storage.local.get(["emotionTags"], (result) => {
@@ -83,6 +92,93 @@
     });
   };
 
+  app.loadProfileEntries = () => {
+    if (app.state.profileEntriesLoadPromise) {
+      return app.state.profileEntriesLoadPromise;
+    }
+
+    app.state.profileEntriesLoadPromise = new Promise((resolve) => {
+      chrome.storage.local.get([PROFILE_ENTRIES_KEY], (result) => {
+        const raw = Array.isArray(result?.[PROFILE_ENTRIES_KEY])
+          ? result[PROFILE_ENTRIES_KEY]
+          : [];
+
+        profileEntries.splice(
+          0,
+          profileEntries.length,
+          ...raw.filter(
+            (entry) =>
+              entry &&
+              typeof entry.postId === "string" &&
+              typeof entry.summary === "string" &&
+              typeof entry.selectedEmotion === "string" &&
+              typeof entry.savedAt === "number",
+          ),
+        );
+
+        resolve(profileEntries);
+      });
+    });
+
+    return app.state.profileEntriesLoadPromise;
+  };
+
+  app.saveProfileEntry = async (entry) => {
+    await app.loadProfileEntries();
+
+    const nextEntries = [
+      entry,
+      ...profileEntries.filter(
+        (item) =>
+          !(
+            item.postId === entry.postId &&
+            item.selectedEmotion === entry.selectedEmotion &&
+            item.savedAt === entry.savedAt
+          ),
+      ),
+    ].slice(0, PROFILE_ENTRIES_MAX);
+
+    profileEntries.splice(0, profileEntries.length, ...nextEntries);
+    app.invalidateArousalDetails();
+    app.state.profileEntriesLoadPromise = Promise.resolve(profileEntries);
+
+    return new Promise((resolve) => {
+      chrome.storage.local.set({ [PROFILE_ENTRIES_KEY]: nextEntries }, () =>
+        resolve(),
+      );
+    });
+  };
+
+  app.loadUserReportedTriggers = () => {
+    if (app.state.userReportedTriggersLoadPromise) {
+      return app.state.userReportedTriggersLoadPromise;
+    }
+
+    app.state.userReportedTriggersLoadPromise = new Promise((resolve) => {
+      chrome.storage.local.get([USER_REPORTED_TRIGGERS_KEY], (result) => {
+        app.state.userReportedTriggers = String(
+          result?.[USER_REPORTED_TRIGGERS_KEY] || "",
+        ).trim();
+        resolve(app.state.userReportedTriggers);
+      });
+    });
+
+    return app.state.userReportedTriggersLoadPromise;
+  };
+
+  app.saveUserReportedTriggers = async (value) => {
+    const nextValue = String(value || "").trim();
+    app.state.userReportedTriggers = nextValue;
+    app.state.userReportedTriggersLoadPromise = Promise.resolve(nextValue);
+    app.invalidateArousalDetails();
+
+    return new Promise((resolve) => {
+      chrome.storage.local.set({ [USER_REPORTED_TRIGGERS_KEY]: nextValue }, () =>
+        resolve(nextValue),
+      );
+    });
+  };
+
   app.loadPersistentLowScoreCache = () => {
     if (app.state.lowScoreCacheLoadPromise) {
       return app.state.lowScoreCacheLoadPromise;
@@ -144,11 +240,14 @@
         Object.entries(raw).forEach(([postId, entry]) => {
           if (
             !entry ||
-            typeof entry.score !== "number" ||
+            typeof entry.genericScore !== "number" ||
+            typeof entry.personalizedScore !== "number" ||
             typeof entry.ts !== "number" ||
-            typeof entry.reason !== "string" ||
+            typeof entry.genericReason !== "string" ||
+            typeof entry.personalizedReason !== "string" ||
             typeof entry.label !== "string" ||
-            typeof entry.primaryEmotion !== "string"
+            typeof entry.primaryEmotion !== "string" ||
+            typeof entry.contextKey !== "string"
           ) {
             return;
           }
@@ -181,4 +280,40 @@
 
     chrome.storage.local.set({ [LLM_AROUSAL_CACHE_KEY]: serialized });
   };
+
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== "local") return;
+
+    if (Object.prototype.hasOwnProperty.call(changes, PROFILE_ENTRIES_KEY)) {
+      const nextValue = Array.isArray(changes[PROFILE_ENTRIES_KEY]?.newValue)
+        ? changes[PROFILE_ENTRIES_KEY].newValue
+        : [];
+      profileEntries.splice(
+        0,
+        profileEntries.length,
+        ...nextValue.filter(
+          (entry) =>
+            entry &&
+            typeof entry.postId === "string" &&
+            typeof entry.summary === "string" &&
+            typeof entry.selectedEmotion === "string" &&
+            typeof entry.savedAt === "number",
+        ),
+      );
+      app.state.profileEntriesLoadPromise = Promise.resolve(profileEntries);
+      app.invalidateArousalDetails();
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(changes, USER_REPORTED_TRIGGERS_KEY)
+    ) {
+      app.state.userReportedTriggers = String(
+        changes[USER_REPORTED_TRIGGERS_KEY]?.newValue || "",
+      ).trim();
+      app.state.userReportedTriggersLoadPromise = Promise.resolve(
+        app.state.userReportedTriggers,
+      );
+      app.invalidateArousalDetails();
+    }
+  });
 })();

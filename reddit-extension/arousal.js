@@ -225,25 +225,83 @@
   };
 
   app.extractArousalAnalysis = (payload) => {
-    const raw = Number(payload?.arousal_score);
-    if (!Number.isFinite(raw)) {
-      throw new Error("invalid-llm-arousal-score");
+    const genericRaw = Number(payload?.generic_arousal_score);
+    if (!Number.isFinite(genericRaw)) {
+      throw new Error("invalid-generic-llm-arousal-score");
     }
 
+    const personalizedRaw = Number(payload?.personalized_arousal_score);
+
     return {
-      arousal_score: app.clamp01(raw),
+      generic_arousal_score: app.clamp01(genericRaw),
+      personalized_arousal_score: app.clamp01(
+        Number.isFinite(personalizedRaw) ? personalizedRaw : 0,
+      ),
       label: String(payload?.label || "medium"),
       primary_emotion: String(payload?.primary_emotion || "other"),
-      reason: String(payload?.reason || "").trim(),
+      generic_reason:
+        String(payload?.generic_reason || payload?.reason || "").trim() ||
+        "No generic reasoning returned.",
+      personalized_reason:
+        String(payload?.personalized_reason || payload?.reason || "").trim() ||
+        "No personalized reasoning returned.",
     };
   };
 
-  app.requestLlmArousalAnalysis = (text) =>
+  app.buildProfileHistorySummary = (entries, currentPostId) => {
+    const normalizedCurrentPostId = app.normalizePostUrl(currentPostId);
+
+    return entries
+      .filter(
+        (entry) =>
+          entry &&
+          typeof entry.postId === "string" &&
+          typeof entry.summary === "string" &&
+          typeof entry.selectedEmotion === "string" &&
+          app.normalizePostUrl(entry.postId) !== normalizedCurrentPostId,
+      )
+      .map((entry, index) => {
+        const summary = entry.summary.replace(/\s+/g, " ").trim();
+        const personalizedScore =
+          typeof entry.personalizedArousalScore === "number"
+            ? ` Personalized arousal: ${Math.round(
+                entry.personalizedArousalScore * 100,
+              )}%.`
+            : "";
+        return `${index + 1}. Emotion: ${entry.selectedEmotion}. Summary: ${summary}.${personalizedScore}`;
+      })
+      .join("\n");
+  };
+
+  app.getArousalPersonalizationContext = async (currentPostId) => {
+    const [entries, userReportedTriggers] = await Promise.all([
+      app.loadProfileEntries(),
+      app.loadUserReportedTriggers(),
+    ]);
+    const profileHistorySummary = app.buildProfileHistorySummary(
+      entries,
+      currentPostId,
+    );
+    const contextKey = app.hashString(
+      JSON.stringify({
+        userReportedTriggers,
+        profileHistorySummary,
+      }),
+    );
+
+    return {
+      userReportedTriggers,
+      profileHistorySummary,
+      contextKey,
+    };
+  };
+
+  app.requestLlmArousalAnalysis = (payload) =>
     new Promise((resolve, reject) => {
       chrome.runtime.sendMessage(
         {
           type: "reddit-emotion-arousal-analysis",
-          text,
+          payload,
         },
         (response) => {
           const runtimeError = chrome.runtime.lastError;
@@ -264,25 +322,39 @@
 
   app.getLlmArousalAnalysis = async (postId, text) => {
     const normalizedPostId = app.normalizePostUrl(postId);
+    const personalizationContext =
+      await app.getArousalPersonalizationContext(normalizedPostId);
     await app.loadPersistentLlmArousalCache();
 
-    if (app.state.llmArousalCache.has(normalizedPostId)) {
-      return app.state.llmArousalCache.get(normalizedPostId);
+    const cached = app.state.llmArousalCache.get(normalizedPostId);
+    if (cached && cached.contextKey === personalizationContext.contextKey) {
+      return cached;
     }
 
     const persisted = app.state.persistentLlmArousalCache.get(normalizedPostId);
-    if (persisted && Date.now() - persisted.ts <= LLM_AROUSAL_CACHE_TTL_MS) {
+    if (
+      persisted &&
+      persisted.contextKey === personalizationContext.contextKey &&
+      Date.now() - persisted.ts <= LLM_AROUSAL_CACHE_TTL_MS
+    ) {
       app.state.llmArousalCache.set(normalizedPostId, persisted);
       return persisted;
     }
 
-    const payload = await app.requestLlmArousalAnalysis(text);
+    const payload = await app.requestLlmArousalAnalysis({
+      post_text: text,
+      user_reported_triggers: personalizationContext.userReportedTriggers,
+      prior_labeled_posts_summary: personalizationContext.profileHistorySummary,
+    });
     const analysis = app.extractArousalAnalysis(payload);
     const cacheEntry = {
-      score: analysis.arousal_score,
+      genericScore: analysis.generic_arousal_score,
+      personalizedScore: analysis.personalized_arousal_score,
       label: analysis.label,
       primaryEmotion: analysis.primary_emotion,
-      reason: analysis.reason,
+      genericReason: analysis.generic_reason,
+      personalizedReason: analysis.personalized_reason,
+      contextKey: personalizationContext.contextKey,
       ts: Date.now(),
     };
 
@@ -309,19 +381,31 @@
         finalScore: heuristicScore,
         heuristicScore,
         llmScore: null,
-        llmReason: "LLM analysis unavailable.",
+        genericLlmScore: null,
+        personalizedLlmScore: null,
+        genericLlmReason: "LLM analysis unavailable.",
+        personalizedLlmReason: "LLM personalization unavailable.",
         llmLabel: null,
         primaryEmotion: null,
       };
     }
 
     const llmAnalysis = llmResult.value;
-    const llmScore = app.clamp01(Number(llmAnalysis.score || 0));
+    const genericLlmScore = app.clamp01(Number(llmAnalysis.genericScore || 0));
+    const personalizedLlmScore = app.clamp01(
+      Number(llmAnalysis.personalizedScore || 0),
+    );
+    const llmScore = app.clamp01(genericLlmScore + personalizedLlmScore);
     return {
       finalScore: app.clamp01(heuristicScore * 0.5 + llmScore * 0.5),
       heuristicScore,
       llmScore,
-      llmReason: llmAnalysis.reason || "",
+      genericLlmScore,
+      personalizedLlmScore,
+      genericLlmReason:
+        llmAnalysis.genericReason || "No generic reasoning returned.",
+      personalizedLlmReason:
+        llmAnalysis.personalizedReason || "No personalized reasoning returned.",
       llmLabel: llmAnalysis.label || null,
       primaryEmotion: llmAnalysis.primaryEmotion || null,
     };

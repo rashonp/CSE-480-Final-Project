@@ -14,7 +14,9 @@ MODEL = "gpt-5-mini"
 PROMPT_TEMPLATE = """You are an emotion analysis system.
 
 Task:
-Given a Reddit post, estimate its emotional arousal level.
+Given a Reddit post, estimate:
+1. a generic emotional arousal level based only on the post text
+2. a personalized emotional arousal level for this specific user
 
 Definitions:
 - Arousal = intensity of emotional activation (not positive vs negative).
@@ -24,17 +26,38 @@ Definitions:
 Output:
 Return a JSON object with:
 {
-  "arousal_score": number from 0 to 1,
+  "generic_arousal_score": number from 0 to 1,
+  "personalized_arousal_score": number from 0 to 1,
   "label": "low" | "medium" | "high",
   "primary_emotion": one of ["anger","fear","sadness","joy","neutral","other"],
-  "reason": short explanation (1 sentence)
+  "generic_reason": short explanation (1 sentence),
+  "personalized_reason": short explanation (1 sentence)
 }
 
 Guidelines:
 - Focus on emotional intensity, not topic.
-- Strong language, caps, urgency -> higher score
-- Neutral storytelling -> lower score
-- If unsure, default to medium (0.4-0.6)
+- Strong language, caps, urgency -> higher score.
+- Neutral storytelling -> lower score.
+- The generic score should only use the post text.
+- The personalized score is an additional personalization adjustment, not a second total score.
+- The total LLM score should be interpreted as generic_arousal_score + personalized_arousal_score, clamped to 1.
+- The personalized score should use the similarity of this post to the user's prior labeled posts and user-reported triggers.
+- If the personalization context is blank or unrelated, personalized_arousal_score should be 0 or very close to 0.
+- If user-reported triggers are blank, ignore them.
+- If prior labeled post history is blank, ignore it.
+- Do not assume the user always reacts strongly to related topics; only adjust when the similarity is meaningful.
+- Keep personalized_arousal_score smaller than the generic score unless the match is unusually strong.
+- If unsure, default to medium (0.4-0.6).
+
+User-reported triggers:
+\"\"\"
+__USER_REPORTED_TRIGGERS__
+\"\"\"
+
+Prior labeled post summaries:
+\"\"\"
+__PRIOR_LABELED_POSTS_SUMMARY__
+\"\"\"
 
 Text:
 \"\"\"
@@ -45,7 +68,12 @@ SCHEMA = {
     "type": "object",
     "additionalProperties": False,
     "properties": {
-        "arousal_score": {
+        "generic_arousal_score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+        },
+        "personalized_arousal_score": {
             "type": "number",
             "minimum": 0,
             "maximum": 1,
@@ -58,12 +86,56 @@ SCHEMA = {
             "type": "string",
             "enum": ["anger", "fear", "sadness", "joy", "neutral", "other"],
         },
-        "reason": {
+        "generic_reason": {
+            "type": "string",
+        },
+        "personalized_reason": {
             "type": "string",
         },
     },
-    "required": ["arousal_score", "label", "primary_emotion", "reason"],
+    "required": [
+        "generic_arousal_score",
+        "personalized_arousal_score",
+        "label",
+        "primary_emotion",
+        "generic_reason",
+        "personalized_reason",
+    ],
 }
+
+PROFILE_SUMMARY_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "summary": {
+            "type": "string",
+        },
+    },
+    "required": ["summary"],
+}
+
+PROFILE_SUMMARY_PROMPT = """You summarize Reddit reflections for a private profile page.
+
+Task:
+Write one short paragraph that summarizes:
+- what the Reddit post is about
+- what emotion the user selected
+- any useful signal from the user's note or reappraisal step
+
+Rules:
+- Keep it under 80 words
+- Be concrete and plain
+- Do not quote the post
+- If the note or reappraisal step is empty, ignore it
+
+Selected emotion: __SELECTED_EMOTION__
+Check-in note: __CHECK_IN_NOTE__
+Reappraisal step: __REAPPRAISAL_STEP__
+
+Post:
+\"\"\"
+__POST_TEXT__
+\"\"\""""
 
 
 def load_env_file():
@@ -104,9 +176,17 @@ def extract_output_text(response_json):
     raise ValueError("No text output returned by OpenAI.")
 
 
-def call_openai_arousal_analysis(post_text):
+def call_openai_arousal_analysis(
+    post_text, user_reported_triggers="", prior_labeled_posts_summary=""
+):
     print(f"Analyzing post text (truncated to 20 chars): {post_text[:20]!r}")
-    prompt = PROMPT_TEMPLATE.replace("__POST_TEXT__", post_text)
+    prompt = (
+        PROMPT_TEMPLATE.replace("__POST_TEXT__", post_text)
+        .replace("__USER_REPORTED_TRIGGERS__", user_reported_triggers or "none")
+        .replace(
+            "__PRIOR_LABELED_POSTS_SUMMARY__", prior_labeled_posts_summary or "none"
+        )
+    )
     request_body = {
         "model": MODEL,
         "input": prompt,
@@ -144,13 +224,69 @@ def call_openai_arousal_analysis(post_text):
 
     parsed = json.loads(extract_output_text(payload))
     result = {
-        "arousal_score": min(1.0, max(0.0, float(parsed["arousal_score"]))),
+        "generic_arousal_score": min(
+            1.0, max(0.0, float(parsed["generic_arousal_score"]))
+        ),
+        "personalized_arousal_score": min(
+            1.0, max(0.0, float(parsed["personalized_arousal_score"]))
+        ),
         "label": str(parsed["label"]),
         "primary_emotion": str(parsed["primary_emotion"]),
-        "reason": str(parsed["reason"]).strip(),
+        "generic_reason": str(parsed["generic_reason"]).strip()
+        or "No generic reasoning returned.",
+        "personalized_reason": str(parsed["personalized_reason"]).strip()
+        or "No personalized reasoning returned.",
     }
     print(f"Analysis result: {result}")
     return result
+
+
+def call_openai_profile_summary(
+    post_text, selected_emotion, check_in_note, reappraisal_step
+):
+    prompt = (
+        PROFILE_SUMMARY_PROMPT.replace("__POST_TEXT__", post_text)
+        .replace("__SELECTED_EMOTION__", selected_emotion or "none")
+        .replace("__CHECK_IN_NOTE__", check_in_note or "")
+        .replace("__REAPPRAISAL_STEP__", reappraisal_step or "")
+    )
+    request_body = {
+        "model": MODEL,
+        "input": prompt,
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "reddit_reflection_summary",
+                "strict": True,
+                "schema": PROFILE_SUMMARY_SCHEMA,
+            }
+        },
+    }
+    request = Request(
+        "https://api.openai.com/v1/responses",
+        data=json.dumps(request_body).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {get_api_key()}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+
+    try:
+        with urlopen(request, timeout=45) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except HTTPError as error:
+        error_body = error.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"OpenAI request failed with HTTP {error.code}: {error_body}"
+        ) from error
+    except URLError as error:
+        raise RuntimeError(f"Could not reach OpenAI: {error.reason}") from error
+
+    parsed = json.loads(extract_output_text(payload))
+    return {
+        "summary": str(parsed["summary"]).strip(),
+    }
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -169,7 +305,7 @@ class Handler(BaseHTTPRequestHandler):
         self._write_json(200, {})
 
     def do_POST(self):
-        if self.path != "/analyze-arousal":
+        if self.path not in {"/analyze-arousal", "/summarize-reflection"}:
             self._write_json(404, {"error": "Not found"})
             return
 
@@ -177,13 +313,25 @@ class Handler(BaseHTTPRequestHandler):
             content_length = int(self.headers.get("Content-Length", "0"))
             raw_body = self.rfile.read(content_length).decode("utf-8")
             payload = json.loads(raw_body or "{}")
-            text = str(payload.get("text", "")).strip()
+            text = str(payload.get("text", payload.get("post_text", ""))).strip()
 
             if not text:
                 self._write_json(400, {"error": "Missing post text"})
                 return
 
-            result = call_openai_arousal_analysis(text)
+            if self.path == "/analyze-arousal":
+                result = call_openai_arousal_analysis(
+                    text,
+                    str(payload.get("user_reported_triggers", "")).strip(),
+                    str(payload.get("prior_labeled_posts_summary", "")).strip(),
+                )
+            else:
+                result = call_openai_profile_summary(
+                    text,
+                    str(payload.get("selected_emotion", "")).strip(),
+                    str(payload.get("check_in_note", "")).strip(),
+                    str(payload.get("reappraisal_step", "")).strip(),
+                )
             self._write_json(200, result)
         except json.JSONDecodeError:
             self._write_json(400, {"error": "Invalid JSON request body"})

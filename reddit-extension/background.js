@@ -1,5 +1,9 @@
 (() => {
-  const BACKEND_URL = "http://127.0.0.1:8787/analyze-arousal";
+  const BACKEND_URLS = {
+    "reddit-emotion-arousal-analysis": "http://127.0.0.1:8787/analyze-arousal",
+    "reddit-emotion-profile-summary":
+      "http://127.0.0.1:8787/summarize-reflection",
+  };
 
   const postJson = async (url, payload) => {
     const response = await fetch(url, {
@@ -31,11 +35,31 @@
   };
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message?.type !== "reddit-emotion-arousal-analysis") {
+    if (message?.type === "reddit-emotion-open-profile-page") {
+      chrome.tabs
+        .create({
+          url: chrome.runtime.getURL("profile.html"),
+        })
+        .then(() => {
+          sendResponse({ ok: true });
+        })
+        .catch((error) => {
+          console.warn("Could not open profile page.", error);
+          sendResponse({
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+
+      return true;
+    }
+
+    const endpoint = BACKEND_URLS[message?.type];
+    if (!endpoint) {
       return false;
     }
 
-    postJson(BACKEND_URL, { text: String(message.text || "") })
+    postJson(endpoint, message.payload || { text: String(message.text || "") })
       .then((data) => {
         sendResponse({ ok: true, data });
       })

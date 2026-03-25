@@ -405,6 +405,40 @@
     return { row, arousalBadge };
   };
 
+  app.createProfileButton = () => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "reddit-profile-btn reddit-profile-btn-floating";
+    button.textContent = "Profile";
+
+    button.addEventListener("click", (event) => {
+      app.blockNavigation(event);
+      chrome.runtime.sendMessage({ type: "reddit-emotion-open-profile-page" });
+    });
+
+    [
+      "pointerdown",
+      "pointerup",
+      "mousedown",
+      "mouseup",
+      "touchstart",
+      "touchend",
+    ].forEach((eventName) => {
+      button.addEventListener(eventName, app.stopBubble);
+    });
+
+    return button;
+  };
+
+  app.ensureFloatingProfileButton = () => {
+    let button = document.querySelector(".reddit-profile-btn-floating");
+    if (button) return button;
+
+    button = app.createProfileButton();
+    document.body.appendChild(button);
+    return button;
+  };
+
   app.ensureArousalTooltip = (panel) => {
     let tooltip = panel.querySelector(".reddit-arousal-tooltip");
     if (tooltip) return tooltip;
@@ -427,10 +461,6 @@
       return;
     }
 
-    const llmStatus = details.llmLabel
-      ? `${formatPercent(details.llmScore)} (${details.llmLabel})`
-      : formatPercent(details.llmScore);
-
     const lines = [
       `<div class="reddit-arousal-tooltip-title">Arousal Breakdown</div>`,
       `<div class="reddit-arousal-tooltip-section">Final Score</div>`,
@@ -438,8 +468,15 @@
       `<div class="reddit-arousal-tooltip-divider"></div>`,
       `<div class="reddit-arousal-tooltip-section">Components</div>`,
       `<div class="reddit-arousal-tooltip-line"><span>Base</span><strong>${formatPercent(details.heuristicScore)}</strong></div>`,
-      `<div class="reddit-arousal-tooltip-line"><span>LLM</span><strong>${llmStatus}</strong></div>`,
+      `<div class="reddit-arousal-tooltip-line"><span>LLM Generic</span><strong>${formatPercent(details.genericLlmScore)}</strong></div>`,
+      `<div class="reddit-arousal-tooltip-line"><span>LLM Personalized</span><strong>${formatPercent(details.personalizedLlmScore)}</strong></div>`,
     ];
+
+    if (typeof details.llmScore === "number") {
+      lines.push(
+        `<div class="reddit-arousal-tooltip-meta">LLM total: ${formatPercent(details.llmScore)}${details.llmLabel ? ` (${details.llmLabel})` : ""}</div>`,
+      );
+    }
 
     if (details.primaryEmotion) {
       lines.push(
@@ -447,9 +484,17 @@
       );
     }
 
-    if (details.llmReason) {
+    if (details.genericLlmReason) {
       lines.push(
-        `<div class="reddit-arousal-tooltip-reason">${details.llmReason}</div>`,
+        `<div class="reddit-arousal-tooltip-meta">Generic reasoning</div>`,
+        `<div class="reddit-arousal-tooltip-reason">${details.genericLlmReason}</div>`,
+      );
+    }
+
+    if (details.personalizedLlmReason) {
+      lines.push(
+        `<div class="reddit-arousal-tooltip-meta">Personalized reasoning</div>`,
+        `<div class="reddit-arousal-tooltip-reason">${details.personalizedLlmReason}</div>`,
       );
     }
 
@@ -590,6 +635,74 @@
     }
   };
 
+  app.requestProfileSummary = (payload) =>
+    new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(
+        {
+          type: "reddit-emotion-profile-summary",
+          payload,
+        },
+        (response) => {
+          const runtimeError = chrome.runtime.lastError;
+          if (runtimeError) {
+            reject(new Error(runtimeError.message));
+            return;
+          }
+
+          if (!response?.ok) {
+            reject(
+              new Error(response?.error || "profile-summary-request-failed"),
+            );
+            return;
+          }
+
+          resolve(response.data || {});
+        },
+      );
+    });
+
+  app.saveProfileReflection = async (
+    post,
+    postId,
+    details,
+    selectedEmotion,
+    checkInNote,
+    reappraisalStep,
+  ) => {
+    if (!selectedEmotion) return;
+
+    const text = app.extractPostText(post);
+    if (!text) return;
+
+    try {
+      const summaryPayload = await app.requestProfileSummary({
+        post_text: text,
+        selected_emotion: selectedEmotion,
+        check_in_note: checkInNote || "",
+        reappraisal_step: reappraisalStep || "",
+      });
+
+      await app.saveProfileEntry({
+        postId,
+        selectedEmotion,
+        summary: String(summaryPayload.summary || "").trim(),
+        arousalScore:
+          typeof details?.finalScore === "number" ? details.finalScore : null,
+        genericArousalScore:
+          typeof details?.genericLlmScore === "number"
+            ? details.genericLlmScore
+            : null,
+        personalizedArousalScore:
+          typeof details?.personalizedLlmScore === "number"
+            ? details.personalizedLlmScore
+            : null,
+        savedAt: Date.now(),
+      });
+    } catch (error) {
+      console.warn("Could not save profile reflection summary.", error);
+    }
+  };
+
   app.resumeCommentIntent = (intent) => {
     if (!intent?.element?.isConnected) return;
 
@@ -646,10 +759,8 @@
     try {
       const percent = Math.round(score * 100);
       const currentEmotion = await app.loadEmotionAsync(postId);
-      const { proceed, selectedEmotion } = await app.showArousalDialog(
-        percent,
-        currentEmotion,
-      );
+      const { proceed, selectedEmotion, checkInNote, reappraisalStep } =
+        await app.showArousalDialog(percent, currentEmotion);
 
       if (proceed) {
         await app.markArousalPromptShown(postId);
@@ -663,6 +774,14 @@
       }
 
       app.resumeCommentIntent(intent);
+      void app.saveProfileReflection(
+        post,
+        postId,
+        details,
+        selectedEmotion,
+        checkInNote,
+        reappraisalStep,
+      );
     } finally {
       app.state.commentGuardActivePostIds.delete(postId);
     }
@@ -785,6 +904,7 @@
   app.injectIntoPosts = () => {
     const posts = document.querySelectorAll("shreddit-post");
     app.attachGlobalArousalCommentGuard();
+    app.ensureFloatingProfileButton();
 
     posts.forEach((post) => {
       const postId = app.getPostId(post);

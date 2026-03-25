@@ -5,6 +5,10 @@
   "description": "Tag Reddit posts with emotions.",
   "permissions": ["storage"],
   "host_permissions": ["http://127.0.0.1:8787/*"],
+  "action": {
+    "default_title": "Emotion Profile",
+    "default_popup": "profile.html"
+  },
   "background": {
     "service_worker": "background.js"
   },

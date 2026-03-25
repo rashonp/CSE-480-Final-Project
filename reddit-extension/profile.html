@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Emotion Profile</title>
+    <style>
+      body {
+        margin: 0;
+        width: 360px;
+        min-height: 420px;
+        font: 14px/1.45 "Segoe UI", sans-serif;
+        background: #f4f7f8;
+        color: #173336;
+      }
+
+      .page {
+        padding: 16px;
+      }
+
+      h1 {
+        margin: 0 0 4px;
+        font-size: 18px;
+      }
+
+      .subhead {
+        margin: 0 0 14px;
+        color: #557376;
+        font-size: 12px;
+      }
+
+      .empty,
+      .card,
+      .trigger-box {
+        border: 1px solid #d4e1e4;
+        border-radius: 10px;
+        background: #ffffff;
+      }
+
+      .trigger-box {
+        padding: 12px;
+        margin-bottom: 14px;
+      }
+
+      .label {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #35595d;
+      }
+
+      textarea {
+        width: 100%;
+        box-sizing: border-box;
+        min-height: 78px;
+        border: 1px solid #c9d8db;
+        border-radius: 8px;
+        padding: 10px;
+        resize: vertical;
+        font: 13px/1.45 "Segoe UI", sans-serif;
+        color: #173336;
+      }
+
+      .trigger-actions {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-top: 8px;
+      }
+
+      .hint {
+        color: #5c777a;
+        font-size: 12px;
+      }
+
+      button {
+        border: 1px solid #9bcac6;
+        border-radius: 999px;
+        background: #ebf5f3;
+        color: #245356;
+        padding: 7px 12px;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        cursor: pointer;
+      }
+
+      .empty {
+        padding: 14px;
+        color: #547275;
+      }
+
+      .list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .card {
+        padding: 12px;
+      }
+
+      .row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+
+      .emotion {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: #dcefed;
+        color: #1d5353;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .time {
+        color: #6a8487;
+        font-size: 11px;
+      }
+
+      .summary {
+        margin: 0 0 8px;
+        color: #27484b;
+      }
+
+      .meta {
+        color: #617b7e;
+        font-size: 12px;
+        margin-bottom: 8px;
+      }
+
+      .meta strong {
+        color: #214548;
+      }
+
+      a {
+        color: #155f70;
+        text-decoration: none;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <h1>Emotion Profile</h1>
+      <p class="subhead">Saved reflections from posts you labeled.</p>
+      <div id="app"></div>
+    </div>
+    <script src="profile.js"></script>
+  </body>
+</html>

@@ -35,6 +35,18 @@
 
   app.clamp01 = (value) => Math.max(0, Math.min(1, value));
 
+  app.hashString = (value) => {
+    const input = String(value || "");
+    let hash = 2166136261;
+
+    for (let index = 0; index < input.length; index += 1) {
+      hash ^= input.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+
+    return `h${(hash >>> 0).toString(16)}`;
+  };
+
   app.normalizePostUrl = (postId) => {
     try {
       const url = new URL(postId);

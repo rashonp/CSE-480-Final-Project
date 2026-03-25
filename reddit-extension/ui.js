@@ -587,7 +587,7 @@
 
     const arousalBadge = document.createElement("span");
     arousalBadge.className = "reddit-arousal-badge pending";
-    arousalBadge.textContent = "Arousal: analyzing...";
+    arousalBadge.textContent = "Emotional Trigger Score: analyzing...";
 
     row.appendChild(arousalBadge);
     return { row, arousalBadge };
@@ -650,38 +650,38 @@
     }
 
     const lines = [
-      `<div class="reddit-arousal-tooltip-title">Arousal Breakdown</div>`,
-      `<div class="reddit-arousal-tooltip-section">Final Score</div>`,
-      `<div class="reddit-arousal-tooltip-line is-final"><span>Final</span><strong>${formatPercent(details.finalScore)}</strong></div>`,
+      `<div class="reddit-arousal-tooltip-title">Trigger Score Details</div>`,
+      `<div class="reddit-arousal-tooltip-section">Overall Score</div>`,
+      `<div class="reddit-arousal-tooltip-line is-final"><span>Overall</span><strong>${formatPercent(details.finalScore)}</strong></div>`,
       `<div class="reddit-arousal-tooltip-divider"></div>`,
-      `<div class="reddit-arousal-tooltip-section">Components</div>`,
-      `<div class="reddit-arousal-tooltip-line"><span>Base</span><strong>${formatPercent(details.heuristicScore)}</strong></div>`,
-      `<div class="reddit-arousal-tooltip-line"><span>LLM Generic</span><strong>${formatPercent(details.genericLlmScore)}</strong></div>`,
-      `<div class="reddit-arousal-tooltip-line"><span>LLM Personalized</span><strong>${formatPercent(details.personalizedLlmScore)}</strong></div>`,
+      `<div class="reddit-arousal-tooltip-section">Score Sources</div>`,
+      `<div class="reddit-arousal-tooltip-line"><span>Content Signals</span><strong>${formatPercent(details.heuristicScore)}</strong></div>`,
+      `<div class="reddit-arousal-tooltip-line"><span>General Context</span><strong>${formatPercent(details.genericLlmScore)}</strong></div>`,
+      `<div class="reddit-arousal-tooltip-line"><span>Personal Context</span><strong>${formatPercent(details.personalizedLlmScore)}</strong></div>`,
     ];
 
     if (typeof details.llmScore === "number") {
       lines.push(
-        `<div class="reddit-arousal-tooltip-meta">LLM total: ${formatPercent(details.llmScore)}${details.llmLabel ? ` (${details.llmLabel})` : ""}</div>`,
+        `<div class="reddit-arousal-tooltip-meta">LLM Contribution: ${formatPercent(details.llmScore)}${details.llmLabel ? ` (${details.llmLabel})` : ""}</div>`,
       );
     }
 
     if (details.primaryEmotion) {
       lines.push(
-        `<div class="reddit-arousal-tooltip-meta">Primary emotion: ${details.primaryEmotion}</div>`,
+        `<div class="reddit-arousal-tooltip-meta">Main Emotion: ${details.primaryEmotion}</div>`,
       );
     }
 
     if (details.genericLlmReason) {
       lines.push(
-        `<div class="reddit-arousal-tooltip-meta">Generic reasoning</div>`,
+        `<div class="reddit-arousal-tooltip-meta">What Shaped This Score</div>`,
         `<div class="reddit-arousal-tooltip-reason">${details.genericLlmReason}</div>`,
       );
     }
 
     if (details.personalizedLlmReason) {
       lines.push(
-        `<div class="reddit-arousal-tooltip-meta">Personalized reasoning</div>`,
+        `<div class="reddit-arousal-tooltip-meta">Why This May Affect You More</div>`,
         `<div class="reddit-arousal-tooltip-reason">${details.personalizedLlmReason}</div>`,
       );
     }
@@ -800,7 +800,7 @@
     if (badge && panel) {
       const percent = Math.round(details.finalScore * 100);
       badge.className = `reddit-arousal-badge ${app.getScoreClass(details.finalScore)}`;
-      badge.textContent = `Arousal: ${percent}%`;
+      badge.textContent = `Emotional Trigger Score: ${percent}%`;
       app.renderArousalTooltip(post, panel, details);
     }
 
@@ -1027,7 +1027,7 @@
     const text = app.extractPostText(post);
     if (!text) {
       badge.className = "reddit-arousal-badge error";
-      badge.textContent = "Arousal: n/a";
+      badge.textContent = "Emotional Trigger Score: n/a";
       app.renderArousalTooltip(post, panel, null);
       return;
     }
@@ -1042,7 +1042,7 @@
 
     const percent = Math.round(details.finalScore * 100);
     badge.className = `reddit-arousal-badge ${app.getScoreClass(details.finalScore)}`;
-    badge.textContent = `Arousal: ${percent}%`;
+    badge.textContent = `Emotional Trigger Score: ${percent}%`;
     app.renderArousalTooltip(post, panel, details);
   };
 

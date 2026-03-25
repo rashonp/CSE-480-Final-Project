@@ -41,7 +41,7 @@
           triggers,
         )}</textarea>
         <div class="trigger-actions">
-          <span class="hint">Used for personalized arousal scoring when this is not blank.</span>
+          <span class="hint">Used for personalized Emotional Trigger Score calculations when this is not blank.</span>
           <div>
             <button type="button" id="save-trigger-btn">Save triggers</button>
             <button type="button" id="clear-all-data-btn" class="danger-btn">Clear all data</button>
@@ -52,7 +52,7 @@
 
     const thresholdSection = `
       <section class="trigger-box setting-box">
-        <label class="label" for="threshold-input">Arousal threshold for popup</label>
+        <label class="label" for="threshold-input">Emotional Trigger Score threshold for popup</label>
         <input id="threshold-input" type="range" min="0" max="100" step="1" value="${Math.round(
           threshold * 100,
         )}" />
@@ -60,7 +60,7 @@
           threshold,
         )}</p>
         <div class="trigger-actions">
-          <span class="hint">The emotional labeling popup appears only when post arousal is above this threshold.</span>
+          <span class="hint">The emotional labeling popup appears only when a post's Emotional Trigger Score is above this threshold.</span>
           <button type="button" id="save-threshold-btn">Save threshold</button>
         </div>
       </section>
@@ -98,7 +98,7 @@
                 ? `${entry.triggerIntensity}/5`
                 : "n/a"
             }</div>
-            <div class="meta"><strong>Final:</strong> ${formatPercent(entry.arousalScore)}</div>
+            <div class="meta"><strong>Emotional Trigger Score:</strong> ${formatPercent(entry.arousalScore)}</div>
             <div class="meta"><strong>LLM Generic:</strong> ${formatPercent(entry.genericArousalScore)}</div>
             <div class="meta"><strong>LLM Personalized:</strong> ${formatPercent(entry.personalizedArousalScore)}</div>
             <div class="card-actions">

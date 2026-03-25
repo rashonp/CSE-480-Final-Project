@@ -1,15 +1,19 @@
 import json
 import os
+import hashlib
 import traceback
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlencode
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
-HOST = "127.0.0.1"
-PORT = 8787
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_PORT = 8787
 MODEL = "gpt-5-mini"
+DEFAULT_POPUP_THRESHOLD = 0.1
 
 PROMPT_TEMPLATE = """You are an emotion analysis system.
 
@@ -170,6 +174,253 @@ def get_api_key():
     return api_key
 
 
+def get_supabase_url():
+    load_env_file()
+    url = os.environ.get("SUPABASE_URL", "").strip().rstrip("/")
+    if not url:
+        raise RuntimeError("SUPABASE_URL is not configured.")
+    return url
+
+
+def get_supabase_service_role_key():
+    load_env_file()
+    key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+    if not key:
+        raise RuntimeError("SUPABASE_SERVICE_ROLE_KEY is not configured.")
+    return key
+
+
+def hash_install_token(install_token):
+    return hashlib.sha256(install_token.encode("utf-8")).hexdigest()
+
+
+def parse_timestamp_millis(value):
+    if not isinstance(value, str) or not value.strip():
+        return 0
+
+    try:
+        return int(datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp() * 1000)
+    except ValueError:
+        return 0
+
+
+def supabase_request(method, table, query=None, body=None, prefer=None):
+    url = f"{get_supabase_url()}/rest/v1/{table}"
+    if query:
+        url = f"{url}?{urlencode(query, doseq=True)}"
+
+    service_key = get_supabase_service_role_key()
+    headers = {
+        "apikey": service_key,
+        "Authorization": f"Bearer {service_key}",
+    }
+    data = None
+
+    if prefer:
+        headers["Prefer"] = prefer
+
+    if body is not None:
+        headers["Content-Type"] = "application/json"
+        data = json.dumps(body).encode("utf-8")
+
+    request = Request(
+        url,
+        data=data,
+        headers=headers,
+        method=method,
+    )
+
+    try:
+        with urlopen(request, timeout=45) as response:
+            text = response.read().decode("utf-8")
+    except HTTPError as error:
+        error_body = error.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"Supabase request failed with HTTP {error.code}: {error_body}"
+        ) from error
+    except URLError as error:
+        raise RuntimeError(f"Could not reach Supabase: {error.reason}") from error
+
+    if not text:
+        return None
+
+    return json.loads(text)
+
+
+def ensure_installation(install_token, trigger_topics=None, popup_threshold=None):
+    token_hash = hash_install_token(install_token)
+    payload = {
+        "install_token_hash": token_hash,
+    }
+
+    if trigger_topics is not None:
+        payload["trigger_topics"] = str(trigger_topics).strip()
+    if popup_threshold is not None:
+        payload["popup_threshold"] = max(0.0, min(1.0, float(popup_threshold)))
+
+    rows = supabase_request(
+        "POST",
+        "installations",
+        query={
+            "on_conflict": "install_token_hash",
+            "select": "id,install_token_hash,trigger_topics,popup_threshold,created_at",
+        },
+        body=payload,
+        prefer="resolution=merge-duplicates,return=representation",
+    )
+
+    if not rows:
+        rows = supabase_request(
+            "GET",
+            "installations",
+            query={
+                "install_token_hash": f"eq.{token_hash}",
+                "select": "id,install_token_hash,trigger_topics,popup_threshold,created_at",
+                "limit": "1",
+            },
+        )
+
+    if not rows:
+        raise RuntimeError("Could not load or create installation.")
+
+    return rows[0]
+
+
+def normalize_profile_entry(row):
+    return {
+        "id": str(row.get("id", "")).strip(),
+        "postId": str(row.get("post_id", "")).strip(),
+        "selectedEmotion": str(row.get("selected_emotion", "")).strip(),
+        "triggerIntensity": int(row["trigger_intensity"])
+        if isinstance(row.get("trigger_intensity"), int)
+        else None,
+        "summary": str(row.get("summary", "")).strip(),
+        "arousalScore": float(row["final_score"])
+        if isinstance(row.get("final_score"), (int, float))
+        else None,
+        "genericArousalScore": float(row["generic_score"])
+        if isinstance(row.get("generic_score"), (int, float))
+        else None,
+        "personalizedArousalScore": float(row["personalized_score"])
+        if isinstance(row.get("personalized_score"), (int, float))
+        else None,
+        "savedAt": parse_timestamp_millis(row.get("created_at")),
+    }
+
+
+def load_profile_data(install_token):
+    installation = ensure_installation(install_token)
+    rows = supabase_request(
+        "GET",
+        "reflections",
+        query={
+            "installation_id": f"eq.{installation['id']}",
+            "select": "id,post_id,selected_emotion,trigger_intensity,summary,final_score,generic_score,personalized_score,created_at",
+            "order": "created_at.desc",
+        },
+    ) or []
+
+    return {
+        "entries": [normalize_profile_entry(row) for row in rows],
+        "tokenHash": str(installation.get("install_token_hash", "") or "").strip(),
+        "triggers": str(installation.get("trigger_topics", "") or "").strip(),
+        "threshold": float(installation.get("popup_threshold", DEFAULT_POPUP_THRESHOLD))
+        if isinstance(installation.get("popup_threshold"), (int, float))
+        else DEFAULT_POPUP_THRESHOLD,
+    }
+
+
+def save_profile_settings(install_token, trigger_topics=None, popup_threshold=None):
+    installation = ensure_installation(
+        install_token,
+        trigger_topics=trigger_topics,
+        popup_threshold=popup_threshold,
+    )
+    return {
+        "tokenHash": str(installation.get("install_token_hash", "") or "").strip(),
+        "triggers": str(installation.get("trigger_topics", "") or "").strip(),
+        "threshold": float(installation.get("popup_threshold", DEFAULT_POPUP_THRESHOLD))
+        if isinstance(installation.get("popup_threshold"), (int, float))
+        else DEFAULT_POPUP_THRESHOLD,
+    }
+
+
+def save_profile_reflection(
+    install_token,
+    post_id,
+    selected_emotion,
+    trigger_intensity,
+    summary,
+    final_score,
+    generic_score,
+    personalized_score,
+):
+    installation = ensure_installation(install_token)
+    rows = supabase_request(
+        "POST",
+        "reflections",
+        query={
+            "select": "id,post_id,selected_emotion,trigger_intensity,summary,final_score,generic_score,personalized_score,created_at",
+        },
+        body={
+            "installation_id": installation["id"],
+            "post_id": post_id,
+            "selected_emotion": selected_emotion,
+            "trigger_intensity": trigger_intensity,
+            "summary": summary,
+            "final_score": final_score,
+            "generic_score": generic_score,
+            "personalized_score": personalized_score,
+        },
+        prefer="return=representation",
+    )
+
+    if not rows:
+        return None
+
+    return normalize_profile_entry(rows[0])
+
+
+def delete_profile_entry(install_token, entry_id):
+    installation = ensure_installation(install_token)
+    supabase_request(
+        "DELETE",
+        "reflections",
+        query={
+            "id": f"eq.{entry_id}",
+            "installation_id": f"eq.{installation['id']}",
+            "select": "id",
+        },
+        prefer="return=representation",
+    )
+
+
+def clear_profile_data(install_token):
+    installation = ensure_installation(install_token)
+    supabase_request(
+        "DELETE",
+        "reflections",
+        query={
+            "installation_id": f"eq.{installation['id']}",
+            "select": "id",
+        },
+        prefer="return=representation",
+    )
+    supabase_request(
+        "PATCH",
+        "installations",
+        query={
+            "id": f"eq.{installation['id']}",
+            "select": "id,trigger_topics,popup_threshold",
+        },
+        body={
+            "trigger_topics": "",
+            "popup_threshold": DEFAULT_POPUP_THRESHOLD,
+        },
+        prefer="return=representation",
+    )
+
+
 def extract_output_text(response_json):
     output_text = response_json.get("output_text")
     if isinstance(output_text, str) and output_text.strip():
@@ -315,7 +566,14 @@ class Handler(BaseHTTPRequestHandler):
         self._write_json(200, {})
 
     def do_POST(self):
-        if self.path not in {"/analyze-arousal", "/summarize-reflection"}:
+        if self.path not in {
+            "/analyze-arousal",
+            "/summarize-reflection",
+            "/profile-data",
+            "/profile-settings",
+            "/profile-delete-entry",
+            "/profile-clear-data",
+        }:
             self._write_json(404, {"error": "Not found"})
             return
 
@@ -324,9 +582,18 @@ class Handler(BaseHTTPRequestHandler):
             raw_body = self.rfile.read(content_length).decode("utf-8")
             payload = json.loads(raw_body or "{}")
             text = str(payload.get("text", payload.get("post_text", ""))).strip()
+            install_token = str(payload.get("install_token", "")).strip()
 
-            if not text:
+            if self.path in {"/analyze-arousal", "/summarize-reflection"} and not text:
                 self._write_json(400, {"error": "Missing post text"})
+                return
+            if self.path in {
+                "/profile-data",
+                "/profile-settings",
+                "/profile-delete-entry",
+                "/profile-clear-data",
+            } and not install_token:
+                self._write_json(400, {"error": "Missing install token"})
                 return
 
             if self.path == "/analyze-arousal":
@@ -335,7 +602,7 @@ class Handler(BaseHTTPRequestHandler):
                     str(payload.get("user_reported_triggers", "")).strip(),
                     str(payload.get("prior_labeled_posts_summary", "")).strip(),
                 )
-            else:
+            elif self.path == "/summarize-reflection":
                 result = call_openai_profile_summary(
                     text,
                     str(payload.get("selected_emotion", "")).strip(),
@@ -343,6 +610,48 @@ class Handler(BaseHTTPRequestHandler):
                     str(payload.get("trigger_intensity", "")).strip(),
                     str(payload.get("reappraisal_step", "")).strip(),
                 )
+                selected_emotion = str(payload.get("selected_emotion", "")).strip()
+                post_id = str(payload.get("post_id", "")).strip()
+                if install_token and selected_emotion and post_id and result["summary"]:
+                    trigger_intensity_raw = payload.get("trigger_intensity_value")
+                    trigger_intensity = (
+                        int(trigger_intensity_raw)
+                        if isinstance(trigger_intensity_raw, int)
+                        else None
+                    )
+                    entry = save_profile_reflection(
+                        install_token,
+                        post_id,
+                        selected_emotion,
+                        trigger_intensity,
+                        result["summary"],
+                        payload.get("arousal_score"),
+                        payload.get("generic_arousal_score"),
+                        payload.get("personalized_arousal_score"),
+                    )
+                    result["entry"] = entry
+            elif self.path == "/profile-data":
+                result = load_profile_data(install_token)
+            elif self.path == "/profile-settings":
+                result = save_profile_settings(
+                    install_token,
+                    trigger_topics=str(payload.get("user_reported_triggers", "")).strip()
+                    if "user_reported_triggers" in payload
+                    else None,
+                    popup_threshold=payload.get("arousal_prompt_threshold")
+                    if "arousal_prompt_threshold" in payload
+                    else None,
+                )
+            elif self.path == "/profile-delete-entry":
+                entry_id = str(payload.get("entry_id", "")).strip()
+                if not entry_id:
+                    self._write_json(400, {"error": "Missing entry id"})
+                    return
+                delete_profile_entry(install_token, entry_id)
+                result = {"ok": True}
+            else:
+                clear_profile_data(install_token)
+                result = {"ok": True}
             self._write_json(200, result)
         except json.JSONDecodeError:
             self._write_json(400, {"error": "Invalid JSON request body"})
@@ -356,8 +665,11 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    server = ThreadingHTTPServer((HOST, PORT), Handler)
-    print(f"Arousal backend listening on http://{HOST}:{PORT}")
+    load_env_file()
+    host = os.environ.get("HOST", DEFAULT_HOST).strip() or DEFAULT_HOST
+    port = int(os.environ.get("PORT", str(DEFAULT_PORT)))
+    server = ThreadingHTTPServer((host, port), Handler)
+    print(f"Arousal backend listening on http://{host}:{port}")
     server.serve_forever()
 
 

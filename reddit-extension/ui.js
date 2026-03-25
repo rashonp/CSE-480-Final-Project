@@ -878,31 +878,55 @@
     try {
       const summaryPayload = await app.requestProfileSummary({
         post_text: text,
+        post_id: postId,
         selected_emotion: selectedEmotion,
         trigger_intensity:
           typeof triggerIntensity === "number" ? `${triggerIntensity}/5` : "",
+        trigger_intensity_value:
+          typeof triggerIntensity === "number" ? triggerIntensity : null,
         check_in_note: checkInNote || "",
         reappraisal_step: reappraisalStep || "",
-      });
-
-      await app.saveProfileEntry({
-        postId,
-        selectedEmotion,
-        triggerIntensity:
-          typeof triggerIntensity === "number" ? triggerIntensity : null,
-        summary: String(summaryPayload.summary || "").trim(),
-        arousalScore:
+        arousal_score:
           typeof details?.finalScore === "number" ? details.finalScore : null,
-        genericArousalScore:
+        generic_arousal_score:
           typeof details?.genericLlmScore === "number"
             ? details.genericLlmScore
             : null,
-        personalizedArousalScore:
+        personalized_arousal_score:
           typeof details?.personalizedLlmScore === "number"
             ? details.personalizedLlmScore
             : null,
-        savedAt: Date.now(),
       });
+
+      const entry = summaryPayload?.entry
+        ? {
+            ...summaryPayload.entry,
+            postId: String(summaryPayload.entry.postId || postId).trim(),
+            selectedEmotion: String(
+              summaryPayload.entry.selectedEmotion || selectedEmotion,
+            ).trim(),
+            summary: String(summaryPayload.entry.summary || "").trim(),
+          }
+        : {
+            postId,
+            selectedEmotion,
+            triggerIntensity:
+              typeof triggerIntensity === "number" ? triggerIntensity : null,
+            summary: String(summaryPayload.summary || "").trim(),
+            arousalScore:
+              typeof details?.finalScore === "number" ? details.finalScore : null,
+            genericArousalScore:
+              typeof details?.genericLlmScore === "number"
+                ? details.genericLlmScore
+                : null,
+            personalizedArousalScore:
+              typeof details?.personalizedLlmScore === "number"
+                ? details.personalizedLlmScore
+                : null,
+            savedAt: Date.now(),
+          };
+
+      await app.saveProfileEntry(entry);
     } catch (error) {
       console.warn("Could not save profile reflection summary.", error);
     }

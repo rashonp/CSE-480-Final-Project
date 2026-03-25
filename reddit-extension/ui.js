@@ -50,6 +50,131 @@
   const COMMENT_ACTION_PATTERN =
     /reply|comment|add a comment|leave a comment|join the conversation|content creation input/i;
 
+  app.closeWelcomeDialog = async () => {
+    const dialog = app.state.welcomeDialogState;
+    if (!dialog) return;
+
+    dialog.overlay.classList.remove("visible");
+    await app.markWelcomeSeen();
+  };
+
+  app.ensureWelcomeDialog = () => {
+    if (app.state.welcomeDialogState) {
+      return app.state.welcomeDialogState;
+    }
+
+    const overlay = document.createElement("div");
+    overlay.className = "reddit-welcome-overlay";
+
+    const modal = document.createElement("div");
+    modal.className = "reddit-welcome-modal";
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+
+    const header = document.createElement("div");
+    header.className = "reddit-welcome-header";
+
+    const headerLeft = document.createElement("div");
+    headerLeft.className = "reddit-welcome-header-left";
+
+    const shield = document.createElement("div");
+    shield.className = "reddit-welcome-shield";
+    shield.innerHTML =
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 4.5 5.2v5.5c0 5.1 2.9 8.8 7.5 10.8 4.6-2 7.5-5.7 7.5-10.8V5.2L12 2.5Zm0 2.1 5.5 2v4.1c0 4.1-2.2 7.1-5.5 8.8-3.3-1.7-5.5-4.7-5.5-8.8V6.6l5.5-2Z"/></svg>';
+
+    const title = document.createElement("h2");
+    title.className = "reddit-welcome-title";
+    title.textContent = "Welcome!";
+
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "reddit-welcome-close";
+    closeBtn.setAttribute("aria-label", "Close welcome");
+    closeBtn.textContent = "X";
+    closeBtn.addEventListener("click", () => {
+      void app.closeWelcomeDialog();
+    });
+
+    headerLeft.appendChild(shield);
+    headerLeft.appendChild(title);
+    header.appendChild(headerLeft);
+    header.appendChild(closeBtn);
+
+    const intro = document.createElement("div");
+    intro.className = "reddit-welcome-intro";
+    intro.innerHTML =
+      'Reddit can be a minefield of ragebait and fearmongering. These aren\'t just posts. They are <strong>designed to trigger emotional dysregulation.</strong> We\'re here to help you stay in the driver\'s seat.';
+
+    const steps = document.createElement("div");
+    steps.className = "reddit-welcome-steps";
+    steps.innerHTML = `
+      <section class="reddit-welcome-step">
+        <div class="reddit-welcome-step-number">1</div>
+        <div class="reddit-welcome-step-body">
+          <h3>Label the Spark <span>(Emotional Expression)</span></h3>
+          <p>When you feel that surge of anxiety or heat, we'll help you name it to tame it.</p>
+          <div class="reddit-welcome-bullet"><strong>The Goal:</strong> Move from a gut reaction to a conscious label.</div>
+          <div class="reddit-welcome-bullet"><strong>The Action:</strong> A quick prompt to identify if you're feeling dismissed, anxious, or provoked.</div>
+        </div>
+      </section>
+      <section class="reddit-welcome-step">
+        <div class="reddit-welcome-step-number">2</div>
+        <div class="reddit-welcome-step-body">
+          <h3>Process the "Why" <span>(Emotional Processing)</span></h3>
+          <p>We go beyond just "feeling mad." We help you understand the need behind the emotion.</p>
+          <div class="reddit-welcome-bullet"><strong>The Insight:</strong> Is this post triggering a fear? Is it challenging your agency?</div>
+          <div class="reddit-welcome-bullet"><strong>The Reappraisal:</strong> We'll guide you to find a balanced perspective so you can respond prosocially or simply walk away with your well-being intact.</div>
+        </div>
+      </section>
+      <section class="reddit-welcome-step">
+        <div class="reddit-welcome-step-number">3</div>
+        <div class="reddit-welcome-step-body">
+          <h3>Find Your Resolution</h3>
+          <p>Every interaction ends with a Pulse Check.</p>
+          <div class="reddit-welcome-bullet"><strong>The Mission:</strong> We ensure you leave the thread feeling resolved, not ruminating.</div>
+          <div class="reddit-welcome-bullet"><strong>The Result:</strong> Less stress, better engagement, and a healthier digital life.</div>
+        </div>
+      </section>
+    `;
+
+    const actionBar = document.createElement("div");
+    actionBar.className = "reddit-welcome-actions";
+
+    const getStartedBtn = document.createElement("button");
+    getStartedBtn.type = "button";
+    getStartedBtn.className = "reddit-welcome-start";
+    getStartedBtn.textContent = "Get Started";
+    getStartedBtn.addEventListener("click", () => {
+      void app.closeWelcomeDialog();
+    });
+
+    actionBar.appendChild(getStartedBtn);
+
+    modal.appendChild(header);
+    modal.appendChild(intro);
+    modal.appendChild(steps);
+    modal.appendChild(actionBar);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    app.state.welcomeDialogState = {
+      overlay,
+    };
+
+    return app.state.welcomeDialogState;
+  };
+
+  app.maybeShowWelcomeDialog = async () => {
+    if (document.body?.dataset.redditWelcomeChecked === "true") return;
+    document.body.dataset.redditWelcomeChecked = "true";
+
+    const hasSeenWelcome = await app.loadHasSeenWelcome();
+    if (hasSeenWelcome) return;
+
+    const dialog = app.ensureWelcomeDialog();
+    dialog.overlay.classList.add("visible");
+  };
+
   app.closeArousalDialog = (result) => {
     const dialog = app.state.arousalDialogState;
     if (!dialog) return;
@@ -59,6 +184,7 @@
       resolver({
         ...result,
         selectedEmotion: dialog.selectedEmotion,
+        triggerIntensity: dialog.triggerIntensity,
         checkInNote: input.value.trim(),
         reappraisalStep: reappraisalInput.value.trim(),
       });
@@ -68,7 +194,9 @@
     input.value = "";
     reappraisalInput.value = "";
     dialog.selectedEmotion = null;
+    dialog.triggerIntensity = null;
     dialog.emotionButtons.forEach((btn) => btn.classList.remove("active"));
+    dialog.triggerButtons.forEach((btn) => btn.classList.remove("active"));
     dialog.updateGuidance?.(null);
     dialog.setStep?.("checkin");
     dialog.resolver = null;
@@ -91,8 +219,16 @@
     title.className = "reddit-arousal-modal-title";
     title.textContent = "Emotion Check-In";
 
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "reddit-arousal-modal-close";
+    closeBtn.setAttribute("aria-label", "Close check-in");
+    closeBtn.textContent = "X";
+
     const message = document.createElement("p");
     message.className = "reddit-arousal-modal-message";
+    message.innerHTML =
+      "This post may trigger a strong reaction. Pause for a moment to notice what you're feeling, what it might mean, and what you might need <em>before responding.</em>";
 
     const checkInSection = document.createElement("div");
     checkInSection.className = "reddit-arousal-modal-section";
@@ -147,7 +283,30 @@
 
     const inputLabel = document.createElement("label");
     inputLabel.className = "reddit-arousal-modal-label";
-    inputLabel.textContent = "Optional note";
+    inputLabel.textContent = "Optional question";
+
+    const inputLead = document.createElement("p");
+    inputLead.className = "reddit-arousal-modal-question";
+    inputLead.innerHTML =
+      "What specific part of this post triggered your reaction? What might this reaction be telling you need right now? Is there another way to interpret this <em>before</em> responding?";
+
+    const triggerLabel = document.createElement("label");
+    triggerLabel.className = "reddit-arousal-modal-trigger-label";
+    triggerLabel.textContent = "How triggering did you find this post?";
+
+    const triggerScale = document.createElement("div");
+    triggerScale.className = "reddit-arousal-trigger-scale";
+
+    const triggerLow = document.createElement("span");
+    triggerLow.className = "reddit-arousal-trigger-pole";
+    triggerLow.textContent = "Low";
+
+    const triggerButtonsWrap = document.createElement("div");
+    triggerButtonsWrap.className = "reddit-arousal-trigger-buttons";
+
+    const triggerHigh = document.createElement("span");
+    triggerHigh.className = "reddit-arousal-trigger-pole";
+    triggerHigh.textContent = "High";
 
     const input = document.createElement("textarea");
     input.className = "reddit-arousal-modal-input";
@@ -157,7 +316,10 @@
     checkInSection.appendChild(emotionLabel);
     checkInSection.appendChild(emotionPicker);
     checkInSection.appendChild(guide);
+    checkInSection.appendChild(triggerLabel);
+    checkInSection.appendChild(triggerScale);
     checkInSection.appendChild(inputLabel);
+    checkInSection.appendChild(inputLead);
     checkInSection.appendChild(input);
 
     const reappraisalSection = document.createElement("div");
@@ -228,6 +390,36 @@
       emotionPicker.appendChild(button);
     });
 
+    const triggerButtons = [];
+    [1, 2, 3, 4, 5].forEach((value) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "reddit-arousal-trigger-btn";
+      button.textContent = String(value);
+      button.dataset.triggerValue = String(value);
+
+      button.addEventListener("click", () => {
+        const dialog = app.state.arousalDialogState;
+        if (!dialog) return;
+
+        dialog.triggerIntensity =
+          dialog.triggerIntensity === value ? null : value;
+        triggerButtons.forEach((btn) => {
+          btn.classList.toggle(
+            "active",
+            Number(btn.dataset.triggerValue) === dialog.triggerIntensity,
+          );
+        });
+      });
+
+      triggerButtons.push(button);
+      triggerButtonsWrap.appendChild(button);
+    });
+
+    triggerScale.appendChild(triggerLow);
+    triggerScale.appendChild(triggerButtonsWrap);
+    triggerScale.appendChild(triggerHigh);
+
     const actions = document.createElement("div");
     actions.className = "reddit-arousal-modal-actions";
 
@@ -235,11 +427,6 @@
     cancelBtn.type = "button";
     cancelBtn.className = "reddit-arousal-modal-btn secondary";
     cancelBtn.textContent = "Cancel";
-
-    const skipBtn = document.createElement("button");
-    skipBtn.type = "button";
-    skipBtn.className = "reddit-arousal-modal-btn neutral";
-    skipBtn.textContent = "Skip";
 
     const continueBtn = document.createElement("button");
     continueBtn.type = "button";
@@ -260,8 +447,6 @@
       const inCheckIn = step === "checkin";
       checkInSection.hidden = !inCheckIn;
       reappraisalSection.hidden = inCheckIn;
-      skipBtn.hidden = !inCheckIn;
-      continueBtn.hidden = !inCheckIn;
 
       if (inCheckIn) {
         if (backBtn.isConnected) {
@@ -278,21 +463,12 @@
           actions.appendChild(continueToPostBtn);
         }
       }
-
-      if (inCheckIn) {
-        message.textContent =
-          modal.dataset.checkinMessage ||
-          "Pause to identify what you're feeling before deciding.";
-      } else {
-        message.textContent =
-          "Before commenting, write one small first step that supports your unmet need.";
-      }
     };
 
     actions.appendChild(cancelBtn);
-    actions.appendChild(skipBtn);
     actions.appendChild(continueBtn);
 
+    modal.appendChild(closeBtn);
     modal.appendChild(title);
     modal.appendChild(message);
     modal.appendChild(checkInSection);
@@ -314,15 +490,23 @@
       app.closeArousalDialog({ proceed: false, action: "cancel" });
     });
 
-    skipBtn.addEventListener("click", () => {
-      app.closeArousalDialog({ proceed: true, action: "skip" });
+    continueBtn.addEventListener("click", () => {
+      const dialog = app.state.arousalDialogState;
+      if (!dialog) return;
+
+      if ((dialog.triggerIntensity || 0) >= 4) {
+        setStep("reappraisal");
+        requestAnimationFrame(() => {
+          reappraisalInput.focus();
+        });
+        return;
+      }
+
+      app.closeArousalDialog({ proceed: true, action: "continue" });
     });
 
-    continueBtn.addEventListener("click", () => {
-      setStep("reappraisal");
-      requestAnimationFrame(() => {
-        reappraisalInput.focus();
-      });
+    closeBtn.addEventListener("click", () => {
+      app.closeArousalDialog({ proceed: false, action: "cancel" });
     });
 
     backBtn.addEventListener("click", () => {
@@ -352,9 +536,11 @@
       input,
       reappraisalInput,
       emotionButtons,
+      triggerButtons,
       updateGuidance,
       setStep,
       selectedEmotion: null,
+      triggerIntensity: null,
       resolver: null,
     };
 
@@ -368,19 +554,21 @@
         proceed: false,
         action: "busy",
         selectedEmotion: null,
+        triggerIntensity: null,
+        reappraisalStep: "",
       });
     }
 
-    dialog.modal.dataset.checkinMessage =
-      `This post has a high arousal score (${percent}%). ` +
-      "Pause to identify what you're feeling, what it means, and what you need before commenting.";
-    dialog.message.textContent = dialog.modal.dataset.checkinMessage;
     dialog.overlay.classList.add("visible");
     dialog.selectedEmotion = preselectedEmotion;
+    dialog.triggerIntensity = null;
+    dialog.input.value = "";
+    dialog.reappraisalInput.value = "";
     dialog.emotionButtons.forEach((btn) => {
       const isActive = btn.dataset.emotionKey === preselectedEmotion;
       btn.classList.toggle("active", isActive);
     });
+    dialog.triggerButtons.forEach((btn) => btn.classList.remove("active"));
     dialog.updateGuidance(preselectedEmotion);
     dialog.setStep("checkin");
 
@@ -666,6 +854,7 @@
     postId,
     details,
     selectedEmotion,
+    triggerIntensity,
     checkInNote,
     reappraisalStep,
   ) => {
@@ -678,6 +867,8 @@
       const summaryPayload = await app.requestProfileSummary({
         post_text: text,
         selected_emotion: selectedEmotion,
+        trigger_intensity:
+          typeof triggerIntensity === "number" ? `${triggerIntensity}/5` : "",
         check_in_note: checkInNote || "",
         reappraisal_step: reappraisalStep || "",
       });
@@ -685,6 +876,8 @@
       await app.saveProfileEntry({
         postId,
         selectedEmotion,
+        triggerIntensity:
+          typeof triggerIntensity === "number" ? triggerIntensity : null,
         summary: String(summaryPayload.summary || "").trim(),
         arousalScore:
           typeof details?.finalScore === "number" ? details.finalScore : null,
@@ -750,7 +943,8 @@
 
     const details = await app.ensureArousalDetails(post, postId);
     const score = details?.finalScore;
-    if (typeof score !== "number" || score <= 0.1) return;
+    const threshold = await app.loadArousalPromptThreshold();
+    if (typeof score !== "number" || score <= threshold) return;
     if (await app.hasShownArousalPrompt(postId)) return;
 
     app.blockCommentEvent(event, intent);
@@ -759,7 +953,13 @@
     try {
       const percent = Math.round(score * 100);
       const currentEmotion = await app.loadEmotionAsync(postId);
-      const { proceed, selectedEmotion, checkInNote, reappraisalStep } =
+      const {
+        proceed,
+        selectedEmotion,
+        triggerIntensity,
+        checkInNote,
+        reappraisalStep,
+      } =
         await app.showArousalDialog(percent, currentEmotion);
 
       if (proceed) {
@@ -779,6 +979,7 @@
         postId,
         details,
         selectedEmotion,
+        triggerIntensity,
         checkInNote,
         reappraisalStep,
       );
@@ -905,6 +1106,7 @@
     const posts = document.querySelectorAll("shreddit-post");
     app.attachGlobalArousalCommentGuard();
     app.ensureFloatingProfileButton();
+    void app.maybeShowWelcomeDialog();
 
     posts.forEach((post) => {
       const postId = app.getPostId(post);

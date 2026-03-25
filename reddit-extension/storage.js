@@ -9,6 +9,9 @@
     PROFILE_ENTRIES_KEY,
     PROFILE_ENTRIES_MAX,
     USER_REPORTED_TRIGGERS_KEY,
+    AROUSAL_PROMPT_THRESHOLD_KEY,
+    DEFAULT_AROUSAL_PROMPT_THRESHOLD,
+    HAS_SEEN_WELCOME_KEY,
     SHOWN_AROUSAL_PROMPTS_KEY,
     LLM_AROUSAL_CACHE_KEY,
     LLM_AROUSAL_CACHE_TTL_MS,
@@ -67,6 +70,30 @@
     });
 
     return app.state.shownArousalPromptsLoadPromise;
+  };
+
+  app.loadHasSeenWelcome = () => {
+    if (app.state.hasSeenWelcomeLoadPromise) {
+      return app.state.hasSeenWelcomeLoadPromise;
+    }
+
+    app.state.hasSeenWelcomeLoadPromise = new Promise((resolve) => {
+      chrome.storage.local.get([HAS_SEEN_WELCOME_KEY], (result) => {
+        app.state.hasSeenWelcome = result?.[HAS_SEEN_WELCOME_KEY] === true;
+        resolve(app.state.hasSeenWelcome);
+      });
+    });
+
+    return app.state.hasSeenWelcomeLoadPromise;
+  };
+
+  app.markWelcomeSeen = async () => {
+    app.state.hasSeenWelcome = true;
+    app.state.hasSeenWelcomeLoadPromise = Promise.resolve(true);
+
+    return new Promise((resolve) => {
+      chrome.storage.local.set({ [HAS_SEEN_WELCOME_KEY]: true }, () => resolve());
+    });
   };
 
   app.hasShownArousalPrompt = async (postId) => {
@@ -164,6 +191,41 @@
     });
 
     return app.state.userReportedTriggersLoadPromise;
+  };
+
+  app.loadArousalPromptThreshold = () => {
+    if (app.state.arousalPromptThresholdLoadPromise) {
+      return app.state.arousalPromptThresholdLoadPromise;
+    }
+
+    app.state.arousalPromptThresholdLoadPromise = new Promise((resolve) => {
+      chrome.storage.local.get([AROUSAL_PROMPT_THRESHOLD_KEY], (result) => {
+        const raw = Number(result?.[AROUSAL_PROMPT_THRESHOLD_KEY]);
+        app.state.arousalPromptThreshold = Number.isFinite(raw)
+          ? app.clamp01(raw)
+          : DEFAULT_AROUSAL_PROMPT_THRESHOLD;
+        resolve(app.state.arousalPromptThreshold);
+      });
+    });
+
+    return app.state.arousalPromptThresholdLoadPromise;
+  };
+
+  app.saveArousalPromptThreshold = async (value) => {
+    const nextValue = app.clamp01(Number(value));
+    app.state.arousalPromptThreshold = Number.isFinite(nextValue)
+      ? nextValue
+      : DEFAULT_AROUSAL_PROMPT_THRESHOLD;
+    app.state.arousalPromptThresholdLoadPromise = Promise.resolve(
+      app.state.arousalPromptThreshold,
+    );
+
+    return new Promise((resolve) => {
+      chrome.storage.local.set(
+        { [AROUSAL_PROMPT_THRESHOLD_KEY]: app.state.arousalPromptThreshold },
+        () => resolve(app.state.arousalPromptThreshold),
+      );
+    });
   };
 
   app.saveUserReportedTriggers = async (value) => {
@@ -314,6 +376,21 @@
         app.state.userReportedTriggers,
       );
       app.invalidateArousalDetails();
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(
+        changes,
+        AROUSAL_PROMPT_THRESHOLD_KEY,
+      )
+    ) {
+      const raw = Number(changes[AROUSAL_PROMPT_THRESHOLD_KEY]?.newValue);
+      app.state.arousalPromptThreshold = Number.isFinite(raw)
+        ? app.clamp01(raw)
+        : DEFAULT_AROUSAL_PROMPT_THRESHOLD;
+      app.state.arousalPromptThresholdLoadPromise = Promise.resolve(
+        app.state.arousalPromptThreshold,
+      );
     }
   });
 })();

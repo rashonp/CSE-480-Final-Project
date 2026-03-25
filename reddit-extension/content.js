@@ -12,6 +12,9 @@
     PROFILE_ENTRIES_KEY: "profileEntries",
     PROFILE_ENTRIES_MAX: 100,
     USER_REPORTED_TRIGGERS_KEY: "userReportedTriggers",
+    AROUSAL_PROMPT_THRESHOLD_KEY: "arousalPromptThreshold",
+    DEFAULT_AROUSAL_PROMPT_THRESHOLD: 0.1,
+    HAS_SEEN_WELCOME_KEY: "hasSeenWelcome",
     SHOWN_AROUSAL_PROMPTS_KEY: "shownArousalPrompts",
     LLM_AROUSAL_CACHE_KEY: "llmArousalCache",
     LLM_AROUSAL_CACHE_TTL_MS: 24 * 60 * 60 * 1000,
@@ -34,6 +37,8 @@
     shownArousalPrompts: new Set(),
     profileEntries: [],
     userReportedTriggers: "",
+    arousalPromptThreshold: 0.1,
+    hasSeenWelcome: false,
     commentGuardBypassTargets: new WeakSet(),
     commentGuardActivePostIds: new Set(),
     lowScoreCacheLoadPromise: null,
@@ -41,6 +46,9 @@
     shownArousalPromptsLoadPromise: null,
     profileEntriesLoadPromise: null,
     userReportedTriggersLoadPromise: null,
+    arousalPromptThresholdLoadPromise: null,
+    hasSeenWelcomeLoadPromise: null,
     arousalDialogState: null,
+    welcomeDialogState: null,
   };
 })();

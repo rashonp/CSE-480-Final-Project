@@ -7,26 +7,33 @@
     <style>
       body {
         margin: 0;
-        width: 360px;
+        width: 420px;
         min-height: 420px;
         font: 14px/1.45 "Segoe UI", sans-serif;
         background: #f4f7f8;
         color: #173336;
+        display: flex;
+        justify-content: center;
       }
 
       .page {
+        width: 100%;
+        max-width: 400px;
         padding: 16px;
+        box-sizing: border-box;
       }
 
       h1 {
         margin: 0 0 4px;
         font-size: 18px;
+        text-align: center;
       }
 
       .subhead {
         margin: 0 0 14px;
         color: #557376;
         font-size: 12px;
+        text-align: center;
       }
 
       .empty,
@@ -64,6 +71,11 @@
         color: #173336;
       }
 
+      input[type="range"] {
+        width: 100%;
+        margin: 4px 0 0;
+      }
+
       .trigger-actions {
         display: flex;
         align-items: center;
@@ -75,6 +87,18 @@
       .hint {
         color: #5c777a;
         font-size: 12px;
+      }
+
+      .setting-box {
+        padding: 12px;
+        margin-bottom: 14px;
+      }
+
+      .setting-value {
+        margin: 6px 0 0;
+        color: #245356;
+        font-size: 12px;
+        font-weight: 700;
       }
 
       button {
@@ -93,16 +117,20 @@
       .empty {
         padding: 14px;
         color: #547275;
+        text-align: center;
       }
 
       .list {
         display: flex;
         flex-direction: column;
         gap: 10px;
+        align-items: center;
       }
 
       .card {
         padding: 12px;
+        width: 100%;
+        box-sizing: border-box;
       }
 
       .row {
@@ -148,6 +176,26 @@
         color: #155f70;
         text-decoration: none;
         font-size: 12px;
+      }
+
+      .card-actions {
+        margin-top: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .delete-btn {
+        border-color: #e6b1ab;
+        background: #fff1ef;
+        color: #8e3426;
+      }
+
+      .danger-btn {
+        border-color: #de9f97;
+        background: #fde9e6;
+        color: #8c2f24;
       }
     </style>
   </head>

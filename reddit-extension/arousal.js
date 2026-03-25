@@ -262,13 +262,17 @@
       )
       .map((entry, index) => {
         const summary = entry.summary.replace(/\s+/g, " ").trim();
+        const triggerIntensity =
+          typeof entry.triggerIntensity === "number"
+            ? ` Trigger intensity: ${entry.triggerIntensity}/5.`
+            : "";
         const personalizedScore =
           typeof entry.personalizedArousalScore === "number"
             ? ` Personalized arousal: ${Math.round(
                 entry.personalizedArousalScore * 100,
               )}%.`
             : "";
-        return `${index + 1}. Emotion: ${entry.selectedEmotion}. Summary: ${summary}.${personalizedScore}`;
+        return `${index + 1}. Emotion: ${entry.selectedEmotion}.${triggerIntensity} Summary: ${summary}.${personalizedScore}`;
       })
       .join("\n");
   };

@@ -38,6 +38,10 @@ Guidelines:
 - Focus on emotional intensity, not topic.
 - Strong language, caps, urgency -> higher score.
 - Neutral storytelling -> lower score.
+- Write both reasons in plain, end-user-friendly language.
+- Keep the reasons short, concrete, and easy to understand.
+- Avoid technical or model-facing language like "the model infers", "classification", "context window", or "probability".
+- Explain the score as if you are speaking directly to the user.
 - The generic score should only use the post text.
 - The personalized score is an additional personalization adjustment, not a second total score.
 - The total LLM score should be interpreted as generic_arousal_score + personalized_arousal_score, clamped to 1.
@@ -120,15 +124,20 @@ Task:
 Write one short paragraph that summarizes:
 - what the Reddit post is about
 - what emotion the user selected
-- any useful signal from the user's note or reappraisal step
+- the user's trigger intensity if provided
+- any useful signal from the user's note
+- any useful signal from the user's reappraisal step
 
 Rules:
 - Keep it under 80 words
 - Be concrete and plain
+- Write for an end user, not for an analyst or developer
+- Use natural, supportive language without technical phrasing
 - Do not quote the post
-- If the note or reappraisal step is empty, ignore it
+- If the note, trigger intensity, or reappraisal step is empty, ignore it
 
 Selected emotion: __SELECTED_EMOTION__
+Trigger intensity: __TRIGGER_INTENSITY__
 Check-in note: __CHECK_IN_NOTE__
 Reappraisal step: __REAPPRAISAL_STEP__
 
@@ -242,11 +251,12 @@ def call_openai_arousal_analysis(
 
 
 def call_openai_profile_summary(
-    post_text, selected_emotion, check_in_note, reappraisal_step
+    post_text, selected_emotion, check_in_note, trigger_intensity, reappraisal_step
 ):
     prompt = (
         PROFILE_SUMMARY_PROMPT.replace("__POST_TEXT__", post_text)
         .replace("__SELECTED_EMOTION__", selected_emotion or "none")
+        .replace("__TRIGGER_INTENSITY__", trigger_intensity or "")
         .replace("__CHECK_IN_NOTE__", check_in_note or "")
         .replace("__REAPPRAISAL_STEP__", reappraisal_step or "")
     )
@@ -330,6 +340,7 @@ class Handler(BaseHTTPRequestHandler):
                     text,
                     str(payload.get("selected_emotion", "")).strip(),
                     str(payload.get("check_in_note", "")).strip(),
+                    str(payload.get("trigger_intensity", "")).strip(),
                     str(payload.get("reappraisal_step", "")).strip(),
                 )
             self._write_json(200, result)

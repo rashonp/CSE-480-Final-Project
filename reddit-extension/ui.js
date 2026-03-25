@@ -597,7 +597,19 @@
     const button = document.createElement("button");
     button.type = "button";
     button.className = "reddit-profile-btn reddit-profile-btn-floating";
-    button.textContent = "Profile";
+
+    const icon = document.createElement("span");
+    icon.className = "reddit-profile-btn-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.innerHTML =
+      '<svg viewBox="0 0 24 24" focusable="false"><path d="M12 12.2a4.1 4.1 0 1 0-4.1-4.1 4.1 4.1 0 0 0 4.1 4.1Zm0 2.05c-3.4 0-6.2 1.72-6.2 3.85V20h12.4v-1.9c0-2.13-2.8-3.85-6.2-3.85Z"></path></svg>';
+
+    const label = document.createElement("span");
+    label.className = "reddit-profile-btn-label";
+    label.textContent = "Profile";
+
+    button.appendChild(icon);
+    button.appendChild(label);
 
     button.addEventListener("click", (event) => {
       app.blockNavigation(event);
@@ -1046,7 +1058,7 @@
     app.renderArousalTooltip(post, panel, details);
   };
 
-  app.createEmotionBar = (postId) => {
+  app.createEmotionBar = (post, postId) => {
     const bar = document.createElement("div");
     bar.className = "reddit-emotion-bar";
 
@@ -1069,14 +1081,35 @@
       btn.className = "reddit-emotion-btn";
       btn.textContent = emotion.label;
 
-      btn.addEventListener("click", (event) => {
+      btn.addEventListener("click", async (event) => {
         app.blockNavigation(event);
-        app.saveEmotion(postId, emotion.key);
 
-        bar
-          .querySelectorAll(".reddit-emotion-btn")
-          .forEach((button) => button.classList.remove("active"));
-        btn.classList.add("active");
+        const details = await app.ensureArousalDetails(post, postId);
+        const percent =
+          typeof details?.finalScore === "number"
+            ? Math.round(details.finalScore * 100)
+            : null;
+        const {
+          proceed,
+          selectedEmotion,
+          triggerIntensity,
+          checkInNote,
+          reappraisalStep,
+        } = await app.showArousalDialog(percent, emotion.key);
+
+        if (!proceed || !selectedEmotion) return;
+
+        app.saveEmotion(postId, selectedEmotion);
+        app.applyEmotionSelectionToPost(post, selectedEmotion);
+        void app.saveProfileReflection(
+          post,
+          postId,
+          details,
+          selectedEmotion,
+          triggerIntensity,
+          checkInNote,
+          reappraisalStep,
+        );
       });
 
       [
@@ -1118,7 +1151,7 @@
       panel.className = "reddit-sentiment-panel";
 
       const { row, arousalBadge } = app.createSignalRow();
-      const emotions = app.createEmotionBar(postId);
+      const emotions = app.createEmotionBar(post, postId);
       panel.appendChild(row);
       panel.appendChild(emotions);
 

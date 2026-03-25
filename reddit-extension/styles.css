@@ -37,8 +37,7 @@ shreddit-post {
   backdrop-filter: blur(4px);
 }
 
-.reddit-sentiment-panel[data-has-arousal-tooltip="true"]:hover .reddit-arousal-tooltip,
-shreddit-post[data-has-arousal-tooltip="true"]:hover .reddit-sentiment-panel .reddit-arousal-tooltip {
+.reddit-sentiment-panel[data-has-arousal-tooltip="true"]:has(.reddit-arousal-badge:hover) .reddit-arousal-tooltip {
   display: block;
 }
 
@@ -308,6 +307,9 @@ shreddit-post[data-has-arousal-tooltip="true"]:hover .reddit-sentiment-panel .re
 
 .reddit-welcome-start {
   width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border: none;
   border-radius: 10px;
   background: linear-gradient(135deg, #2f9f96 0%, #379f8f 100%);
@@ -665,12 +667,17 @@ shreddit-post[data-has-arousal-tooltip="true"]:hover .reddit-sentiment-panel .re
 }
 
 .reddit-profile-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   border: 1px solid #9bcac6;
   border-radius: 999px;
   background: #ebf5f3;
   color: #245356;
-  padding: 6px 10px;
-  font-size: 11px;
+  padding: 10px 16px;
+  min-height: 44px;
+  font-size: 13px;
   font-weight: 700;
   cursor: pointer;
   text-transform: uppercase;
@@ -678,12 +685,33 @@ shreddit-post[data-has-arousal-tooltip="true"]:hover .reddit-sentiment-panel .re
   font-family: "Avenir Next Condensed", "Arial Narrow", "Trebuchet MS", sans-serif;
 }
 
+.reddit-profile-btn-icon {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.reddit-profile-btn-icon svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+  fill: currentColor;
+}
+
+.reddit-profile-btn-label {
+  display: inline-block;
+  line-height: 1;
+}
+
 .reddit-profile-btn-floating {
   position: fixed;
   right: 20px;
   bottom: 20px;
   z-index: 2147483646;
-  padding: 10px 14px;
+  padding: 12px 18px;
   box-shadow: 0 12px 28px rgba(19, 41, 49, 0.18);
 }
 

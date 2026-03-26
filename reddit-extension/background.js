@@ -1,5 +1,5 @@
 (() => {
-  const DEFAULT_BACKEND_BASE_URL = "http://127.0.0.1:8787";
+  const DEFAULT_BACKEND_BASE_URL = "https://cse-480-final-project.onrender.com";
   const INSTALL_TOKEN_KEY = "installToken";
   const BACKEND_BASE_URL_KEY = "backendBaseUrl";
   const BACKEND_ROUTES = {

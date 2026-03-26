@@ -138,6 +138,9 @@ Rules:
 - Write for an end user, not for an analyst or developer
 - Use natural, supportive language without technical phrasing
 - Do not quote the post
+- Treat the Reddit post as content the user read, not as something the user wrote
+- Do not describe the post using second person phrasing such as "you said", "you described", or "your post"
+- Only use "you" for the user's selected emotion, trigger intensity, note, or reappraisal step
 - If the note, trigger intensity, or reappraisal step is empty, ignore it
 
 Selected emotion: __SELECTED_EMOTION__

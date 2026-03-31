@@ -311,6 +311,28 @@ def normalize_profile_entry(row):
     }
 
 
+def normalize_comment_activity(row):
+    return {
+        "id": str(row.get("id", "")).strip(),
+        "postId": str(row.get("post_id", "")).strip(),
+        "postText": str(row.get("post_text", "") or "").strip(),
+        "commentText": str(row.get("comment_text", "")).strip(),
+        "commentKind": str(row.get("comment_kind", "")).strip(),
+        "parentCommentId": str(row.get("parent_comment_id", "") or "").strip(),
+        "parentCommentText": str(row.get("parent_comment_text", "") or "").strip(),
+        "arousalScore": float(row["final_score"])
+        if isinstance(row.get("final_score"), (int, float))
+        else None,
+        "contentSignalScore": float(row["heuristic_score"])
+        if isinstance(row.get("heuristic_score"), (int, float))
+        else None,
+        "llmContributionScore": float(row["llm_score"])
+        if isinstance(row.get("llm_score"), (int, float))
+        else None,
+        "savedAt": parse_timestamp_millis(row.get("created_at")),
+    }
+
+
 def load_profile_data(install_token):
     installation = ensure_installation(install_token)
     rows = supabase_request(
@@ -422,6 +444,53 @@ def clear_profile_data(install_token):
         },
         prefer="return=representation",
     )
+
+
+def save_comment_activity(
+    install_token,
+    post_id,
+    post_text,
+    comment_text,
+    comment_kind,
+    parent_comment_id=None,
+    parent_comment_text=None,
+    final_score=None,
+    heuristic_score=None,
+    llm_score=None,
+):
+    installation = ensure_installation(install_token)
+    normalized_kind = "reply" if str(comment_kind).strip().lower() == "reply" else "comment"
+    rows = supabase_request(
+        "POST",
+        "comment_activity",
+        query={
+            "select": "id,post_id,post_text,comment_text,comment_kind,parent_comment_id,parent_comment_text,final_score,heuristic_score,llm_score,created_at",
+        },
+        body={
+            "installation_id": installation["id"],
+            "post_id": post_id,
+            "post_text": str(post_text or "").strip(),
+            "comment_text": comment_text,
+            "comment_kind": normalized_kind,
+            "parent_comment_id": str(parent_comment_id or "").strip() or None,
+            "parent_comment_text": str(parent_comment_text or "").strip() or None,
+            "final_score": float(final_score)
+            if isinstance(final_score, (int, float))
+            else None,
+            "heuristic_score": float(heuristic_score)
+            if isinstance(heuristic_score, (int, float))
+            else None,
+            "llm_score": float(llm_score)
+            if isinstance(llm_score, (int, float))
+            else None,
+        },
+        prefer="return=representation",
+    )
+
+    if not rows:
+        return None
+
+    return normalize_comment_activity(rows[0])
 
 
 def extract_output_text(response_json):
@@ -576,6 +645,7 @@ class Handler(BaseHTTPRequestHandler):
             "/profile-settings",
             "/profile-delete-entry",
             "/profile-clear-data",
+            "/comment-activity",
         }:
             self._write_json(404, {"error": "Not found"})
             return
@@ -595,6 +665,7 @@ class Handler(BaseHTTPRequestHandler):
                 "/profile-settings",
                 "/profile-delete-entry",
                 "/profile-clear-data",
+                "/comment-activity",
             } and not install_token:
                 self._write_json(400, {"error": "Missing install token"})
                 return
@@ -652,6 +723,28 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 delete_profile_entry(install_token, entry_id)
                 result = {"ok": True}
+            elif self.path == "/comment-activity":
+                post_id = str(payload.get("post_id", "")).strip()
+                comment_text = str(payload.get("comment_text", "")).strip()
+                if not post_id:
+                    self._write_json(400, {"error": "Missing post id"})
+                    return
+                if not comment_text:
+                    self._write_json(400, {"error": "Missing comment text"})
+                    return
+                entry = save_comment_activity(
+                    install_token,
+                    post_id,
+                    str(payload.get("post_text", "")).strip(),
+                    comment_text,
+                    str(payload.get("comment_kind", "")).strip(),
+                    str(payload.get("parent_comment_id", "")).strip(),
+                    str(payload.get("parent_comment_text", "")).strip(),
+                    payload.get("arousal_score"),
+                    payload.get("content_signal_score"),
+                    payload.get("llm_contribution_score"),
+                )
+                result = {"ok": True, "entry": entry}
             else:
                 clear_profile_data(install_token)
                 result = {"ok": True}

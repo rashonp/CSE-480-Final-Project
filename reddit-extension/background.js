@@ -27,6 +27,10 @@
       method: "POST",
       path: "/profile-clear-data",
     },
+    "reddit-emotion-save-comment-activity": {
+      method: "POST",
+      path: "/comment-activity",
+    },
   };
 
   const getLocal = (keys) =>

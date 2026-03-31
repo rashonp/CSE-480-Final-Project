@@ -41,6 +41,7 @@
     hasSeenWelcome: false,
     commentGuardBypassTargets: new WeakSet(),
     commentGuardActivePostIds: new Set(),
+    recentCommentCaptureKeys: new Map(),
     lowScoreCacheLoadPromise: null,
     llmArousalCacheLoadPromise: null,
     shownArousalPromptsLoadPromise: null,

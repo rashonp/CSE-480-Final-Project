@@ -49,6 +49,8 @@
 
   const COMMENT_ACTION_PATTERN =
     /reply|comment|add a comment|leave a comment|join the conversation|content creation input/i;
+  const COMMENT_SUBMIT_PATTERN = /\b(comment|reply)\b/i;
+  const RECENT_COMMENT_CAPTURE_TTL_MS = 15 * 1000;
 
   app.closeWelcomeDialog = async () => {
     const dialog = app.state.welcomeDialogState;
@@ -713,6 +715,277 @@
     return event?.target instanceof Element ? [event.target] : [];
   };
 
+  app.getActionLabel = (action) =>
+    [
+      action?.getAttribute?.("aria-label"),
+      action?.getAttribute?.("data-testid"),
+      action?.getAttribute?.("title"),
+      action?.textContent,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  app.getCommentComposer = (element) => {
+    if (!element?.closest) return null;
+
+    const composer = element.closest(
+      "shreddit-comment-composer, shreddit-composer, shreddit-simple-composer, faceplate-form, form",
+    );
+    if (!composer) return null;
+
+    const field = composer.matches(
+      'textarea, [contenteditable="true"], [role="textbox"], [name="content"]',
+    )
+      ? composer
+      : composer.querySelector(
+          'textarea, [contenteditable="true"], [role="textbox"], [name="content"]',
+        );
+
+    return field ? composer : null;
+  };
+
+  app.findCommentComposerFromElements = (elements) => {
+    for (const element of elements) {
+      const composer = app.getCommentComposer(element);
+      if (composer) return composer;
+    }
+
+    return null;
+  };
+
+  app.sanitizeComposerText = (value) =>
+    String(value || "")
+      .replace(/\s*cancel\s+(comment|reply)\s*$/i, "")
+      .trim();
+
+  app.extractComposerText = (composer) => {
+    if (!composer) return "";
+
+    const fields = composer.matches(
+      'textarea, [contenteditable="true"], [role="textbox"], [name="content"]',
+    )
+      ? [composer]
+      : Array.from(
+          composer.querySelectorAll(
+            'textarea, [contenteditable="true"], [role="textbox"], [name="content"]',
+          ),
+        );
+
+    const values = fields
+      .map((field) => {
+        if ("value" in field && typeof field.value === "string") {
+          return app.sanitizeComposerText(field.value);
+        }
+
+        return app.sanitizeComposerText(
+          field.innerText?.trim() || field.textContent?.trim() || "",
+        );
+      })
+      .filter(Boolean)
+      .sort((left, right) => right.length - left.length);
+
+    return values[0] || "";
+  };
+
+  app.extractCommentText = (comment) => {
+    if (!comment) return "";
+
+    const snippets = [];
+    [
+      '[slot="comment"]',
+      '[slot="comment-body"]',
+      '[data-testid="comment"]',
+      "p",
+      "li",
+    ].forEach((selector) => {
+      comment.querySelectorAll(selector).forEach((node) => {
+        const value = node.textContent?.trim() || "";
+        if (value) snippets.push(value);
+      });
+    });
+
+    const normalized = Array.from(new Set(snippets))
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+    return normalized.slice(0, app.constants.MAX_TEXT_LENGTH);
+  };
+
+  app.getCommentId = (comment) => {
+    if (!comment) return "";
+
+    const permalink =
+      comment.querySelector?.('a[href*="/comments/"]')?.href ||
+      comment.getAttribute?.("permalink") ||
+      comment.getAttribute?.("comment-permalink") ||
+      comment.getAttribute?.("data-permalink") ||
+      "";
+    if (permalink) {
+      try {
+        const absolute = new URL(permalink, window.location.origin).href;
+        const match = absolute.match(/\/comments\/[a-z0-9]+\/[^/]*\/([a-z0-9]+)\//i);
+        if (match) return match[1].toLowerCase();
+        return app.normalizePostUrl(absolute);
+      } catch {
+        // Ignore malformed URLs in unknown attributes.
+      }
+    }
+
+    const rawId =
+      comment.getAttribute?.("thingid") ||
+      comment.getAttribute?.("data-fullname") ||
+      comment.getAttribute?.("fullname") ||
+      comment.getAttribute?.("id") ||
+      comment.id ||
+      "";
+    const normalizedId = String(rawId).trim().toLowerCase();
+    if (normalizedId.startsWith("t1_")) {
+      return normalizedId.slice(3);
+    }
+
+    return normalizedId;
+  };
+
+  app.requestCommentActivitySave = (payload) =>
+    new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(
+        {
+          type: "reddit-emotion-save-comment-activity",
+          payload,
+        },
+        (response) => {
+          const runtimeError = chrome.runtime.lastError;
+          if (runtimeError) {
+            reject(new Error(runtimeError.message));
+            return;
+          }
+
+          if (!response?.ok) {
+            reject(
+              new Error(response?.error || "comment-activity-request-failed"),
+            );
+            return;
+          }
+
+          resolve(response.data || {});
+        },
+      );
+    });
+
+  app.rememberRecentCommentCapture = (payload) => {
+    const now = Date.now();
+    app.state.recentCommentCaptureKeys.forEach((timestamp, key) => {
+      if (now - timestamp > RECENT_COMMENT_CAPTURE_TTL_MS) {
+        app.state.recentCommentCaptureKeys.delete(key);
+      }
+    });
+
+    const key = app.hashString(
+      [
+        payload.post_id,
+        payload.comment_kind,
+        payload.parent_comment_id || "",
+        payload.comment_text,
+      ].join("::"),
+    );
+
+    const lastSeen = app.state.recentCommentCaptureKeys.get(key) || 0;
+    if (now - lastSeen <= RECENT_COMMENT_CAPTURE_TTL_MS) {
+      return "";
+    }
+
+    app.state.recentCommentCaptureKeys.set(key, now);
+    return key;
+  };
+
+  app.getCommentSubmissionPayload = (event) => {
+    const elements = app.getEventPathElements(event);
+    if (elements.length === 0) return null;
+
+    for (const element of elements) {
+      if (
+        element.closest(".reddit-sentiment-panel") ||
+        element.closest(".reddit-arousal-modal-overlay")
+      ) {
+        return null;
+      }
+    }
+
+    let action = null;
+    for (const element of elements) {
+      const candidate = element.closest?.('button, [role="button"], a[href]');
+      if (!candidate) continue;
+
+      const label = app.getActionLabel(candidate);
+      if (!COMMENT_SUBMIT_PATTERN.test(label)) continue;
+
+      action = candidate;
+      break;
+    }
+
+    if (!action) return null;
+
+    const composer =
+      app.getCommentComposer(action) || app.findCommentComposerFromElements(elements);
+    if (!composer) return null;
+
+    const commentText = app.extractComposerText(composer);
+    if (!commentText) return null;
+
+    const context = app.getCommentGuardContext(event);
+    if (!context?.post || !context?.postId) return null;
+
+    const parentComment =
+      action.closest?.("shreddit-comment") ||
+      composer.closest?.("shreddit-comment") ||
+      null;
+    const parentCommentId = app.getCommentId(parentComment);
+    const parentCommentText = app.extractCommentText(parentComment);
+
+    return {
+      post_id: context.postId,
+      post_text: app.extractPostText(context.post),
+      comment_text: commentText,
+      comment_kind: parentComment ? "reply" : "comment",
+      parent_comment_id: parentCommentId || "",
+      parent_comment_text: parentCommentText || "",
+    };
+  };
+
+  app.captureCommentSubmission = async (event) => {
+    const payload = app.getCommentSubmissionPayload(event);
+    if (!payload) return;
+
+    const context = app.getCommentGuardContext(event);
+    if (context?.post && context?.postId) {
+      try {
+        const details = await app.ensureArousalDetails(context.post, context.postId);
+        payload.arousal_score =
+          typeof details?.finalScore === "number" ? details.finalScore : null;
+        payload.content_signal_score =
+          typeof details?.heuristicScore === "number"
+            ? details.heuristicScore
+            : null;
+        payload.llm_contribution_score =
+          typeof details?.llmScore === "number" ? details.llmScore : null;
+      } catch (error) {
+        console.warn("Could not attach arousal details to comment activity.", error);
+      }
+    }
+
+    const key = app.rememberRecentCommentCapture(payload);
+    if (!key) return;
+
+    try {
+      await app.requestCommentActivitySave(payload);
+    } catch (error) {
+      app.state.recentCommentCaptureKeys.delete(key);
+      console.warn("Could not save posted comment activity.", error);
+    }
+  };
+
   app.getCommentIntent = (event) => {
     const elements = app.getEventPathElements(event);
     if (elements.length === 0) return null;
@@ -752,16 +1025,7 @@
       const action = element.closest?.('button, [role="button"], a[href]');
       if (!action) continue;
 
-      const label = [
-        action.getAttribute("aria-label"),
-        action.getAttribute("data-testid"),
-        action.getAttribute("title"),
-        action.textContent,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .replace(/\s+/g, " ")
-        .trim();
+      const label = app.getActionLabel(action);
 
       if (!COMMENT_ACTION_PATTERN.test(label)) continue;
 
@@ -1059,6 +1323,23 @@
     document.body.dataset.arousalCommentGuardAttached = "true";
   };
 
+  app.attachCommentSubmissionCapture = () => {
+    if (document.body?.dataset.commentSubmissionCaptureAttached === "true") {
+      return;
+    }
+
+    document.addEventListener(
+      "click",
+      (event) => {
+        if (event.defaultPrevented) return;
+        void app.captureCommentSubmission(event);
+      },
+      true,
+    );
+
+    document.body.dataset.commentSubmissionCaptureAttached = "true";
+  };
+
   app.renderArousal = async (post, postId, badge, panel) => {
     const text = app.extractPostText(post);
     if (!text) {
@@ -1162,6 +1443,7 @@
   app.injectIntoPosts = () => {
     const posts = document.querySelectorAll("shreddit-post");
     app.attachGlobalArousalCommentGuard();
+    app.attachCommentSubmissionCapture();
     app.ensureFloatingProfileButton();
     void app.maybeShowWelcomeDialog();
 

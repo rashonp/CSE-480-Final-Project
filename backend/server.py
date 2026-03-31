@@ -250,10 +250,18 @@ def supabase_request(method, table, query=None, body=None, prefer=None):
     return json.loads(text)
 
 
-def ensure_installation(install_token, trigger_topics=None, popup_threshold=None):
+def normalize_cohort(value):
+    normalized = str(value or "").strip().lower()
+    return "control" if normalized == "control" else "treatment"
+
+
+def ensure_installation(
+    install_token, trigger_topics=None, popup_threshold=None, cohort=None
+):
     token_hash = hash_install_token(install_token)
     payload = {
         "install_token_hash": token_hash,
+        "cohort": normalize_cohort(cohort),
     }
 
     if trigger_topics is not None:
@@ -266,7 +274,7 @@ def ensure_installation(install_token, trigger_topics=None, popup_threshold=None
         "installations",
         query={
             "on_conflict": "install_token_hash",
-            "select": "id,install_token_hash,trigger_topics,popup_threshold,created_at",
+            "select": "id,install_token_hash,cohort,trigger_topics,popup_threshold,created_at",
         },
         body=payload,
         prefer="resolution=merge-duplicates,return=representation",
@@ -278,7 +286,7 @@ def ensure_installation(install_token, trigger_topics=None, popup_threshold=None
             "installations",
             query={
                 "install_token_hash": f"eq.{token_hash}",
-                "select": "id,install_token_hash,trigger_topics,popup_threshold,created_at",
+                "select": "id,install_token_hash,cohort,trigger_topics,popup_threshold,created_at",
                 "limit": "1",
             },
         )
@@ -333,8 +341,8 @@ def normalize_comment_activity(row):
     }
 
 
-def load_profile_data(install_token):
-    installation = ensure_installation(install_token)
+def load_profile_data(install_token, cohort=None):
+    installation = ensure_installation(install_token, cohort=cohort)
     rows = supabase_request(
         "GET",
         "reflections",
@@ -348,6 +356,7 @@ def load_profile_data(install_token):
     return {
         "entries": [normalize_profile_entry(row) for row in rows],
         "tokenHash": str(installation.get("install_token_hash", "") or "").strip(),
+        "cohort": normalize_cohort(installation.get("cohort", "")),
         "triggers": str(installation.get("trigger_topics", "") or "").strip(),
         "threshold": float(installation.get("popup_threshold", DEFAULT_POPUP_THRESHOLD))
         if isinstance(installation.get("popup_threshold"), (int, float))
@@ -355,14 +364,18 @@ def load_profile_data(install_token):
     }
 
 
-def save_profile_settings(install_token, trigger_topics=None, popup_threshold=None):
+def save_profile_settings(
+    install_token, trigger_topics=None, popup_threshold=None, cohort=None
+):
     installation = ensure_installation(
         install_token,
         trigger_topics=trigger_topics,
         popup_threshold=popup_threshold,
+        cohort=cohort,
     )
     return {
         "tokenHash": str(installation.get("install_token_hash", "") or "").strip(),
+        "cohort": normalize_cohort(installation.get("cohort", "")),
         "triggers": str(installation.get("trigger_topics", "") or "").strip(),
         "threshold": float(installation.get("popup_threshold", DEFAULT_POPUP_THRESHOLD))
         if isinstance(installation.get("popup_threshold"), (int, float))
@@ -379,8 +392,9 @@ def save_profile_reflection(
     final_score,
     generic_score,
     personalized_score,
+    cohort=None,
 ):
-    installation = ensure_installation(install_token)
+    installation = ensure_installation(install_token, cohort=cohort)
     rows = supabase_request(
         "POST",
         "reflections",
@@ -406,8 +420,8 @@ def save_profile_reflection(
     return normalize_profile_entry(rows[0])
 
 
-def delete_profile_entry(install_token, entry_id):
-    installation = ensure_installation(install_token)
+def delete_profile_entry(install_token, entry_id, cohort=None):
+    installation = ensure_installation(install_token, cohort=cohort)
     supabase_request(
         "DELETE",
         "reflections",
@@ -420,8 +434,8 @@ def delete_profile_entry(install_token, entry_id):
     )
 
 
-def clear_profile_data(install_token):
-    installation = ensure_installation(install_token)
+def clear_profile_data(install_token, cohort=None):
+    installation = ensure_installation(install_token, cohort=cohort)
     supabase_request(
         "DELETE",
         "reflections",
@@ -457,8 +471,9 @@ def save_comment_activity(
     final_score=None,
     heuristic_score=None,
     llm_score=None,
+    cohort=None,
 ):
-    installation = ensure_installation(install_token)
+    installation = ensure_installation(install_token, cohort=cohort)
     normalized_kind = "reply" if str(comment_kind).strip().lower() == "reply" else "comment"
     rows = supabase_request(
         "POST",
@@ -656,6 +671,7 @@ class Handler(BaseHTTPRequestHandler):
             payload = json.loads(raw_body or "{}")
             text = str(payload.get("text", payload.get("post_text", ""))).strip()
             install_token = str(payload.get("install_token", "")).strip()
+            cohort = normalize_cohort(payload.get("extension_variant", ""))
 
             if self.path in {"/analyze-arousal", "/summarize-reflection"} and not text:
                 self._write_json(400, {"error": "Missing post text"})
@@ -702,10 +718,11 @@ class Handler(BaseHTTPRequestHandler):
                         payload.get("arousal_score"),
                         payload.get("generic_arousal_score"),
                         payload.get("personalized_arousal_score"),
+                        cohort=cohort,
                     )
                     result["entry"] = entry
             elif self.path == "/profile-data":
-                result = load_profile_data(install_token)
+                result = load_profile_data(install_token, cohort=cohort)
             elif self.path == "/profile-settings":
                 result = save_profile_settings(
                     install_token,
@@ -715,13 +732,14 @@ class Handler(BaseHTTPRequestHandler):
                     popup_threshold=payload.get("arousal_prompt_threshold")
                     if "arousal_prompt_threshold" in payload
                     else None,
+                    cohort=cohort,
                 )
             elif self.path == "/profile-delete-entry":
                 entry_id = str(payload.get("entry_id", "")).strip()
                 if not entry_id:
                     self._write_json(400, {"error": "Missing entry id"})
                     return
-                delete_profile_entry(install_token, entry_id)
+                delete_profile_entry(install_token, entry_id, cohort=cohort)
                 result = {"ok": True}
             elif self.path == "/comment-activity":
                 post_id = str(payload.get("post_id", "")).strip()
@@ -743,10 +761,11 @@ class Handler(BaseHTTPRequestHandler):
                     payload.get("arousal_score"),
                     payload.get("content_signal_score"),
                     payload.get("llm_contribution_score"),
+                    cohort=cohort,
                 )
                 result = {"ok": True, "entry": entry}
             else:
-                clear_profile_data(install_token)
+                clear_profile_data(install_token, cohort=cohort)
                 result = {"ok": True}
             self._write_json(200, result)
         except json.JSONDecodeError:

@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Reddit Baseline Countdown",
+  "version": "1.0.0",
+  "description": "Pause for one minute before the first comment on a Reddit post and log comment activity.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "http://127.0.0.1:8787/*",
+    "https://cse-480-final-project.onrender.com/*"
+  ],
+  "action": {
+    "default_title": "Reddit Baseline Countdown"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.reddit.com/*"],
+      "js": [
+        "content.js",
+        "utils.js",
+        "storage.js",
+        "ui.js",
+        "bootstrap.js"
+      ],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

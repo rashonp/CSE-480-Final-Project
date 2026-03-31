@@ -1,0 +1,78 @@
+.baseline-countdown-overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(12, 20, 28, 0.5);
+  z-index: 2147483647;
+}
+
+.baseline-countdown-overlay.visible {
+  display: flex;
+}
+
+.baseline-countdown-modal {
+  width: min(420px, 100%);
+  padding: 24px;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 24px 56px rgba(14, 21, 30, 0.24);
+  border: 1px solid #d6dee6;
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+}
+
+.baseline-countdown-title {
+  margin: 0 0 10px;
+  color: #18222d;
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.baseline-countdown-body {
+  margin: 0 0 18px;
+  color: #4a5c6f;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.baseline-countdown-timer {
+  margin-bottom: 20px;
+  color: #0e5d66;
+  font-size: 36px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-align: center;
+}
+
+.baseline-countdown-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.baseline-countdown-cancel,
+.baseline-countdown-continue {
+  flex: 1 1 0;
+  min-height: 46px;
+  border-radius: 12px;
+  border: none;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.baseline-countdown-cancel {
+  background: #e8edf2;
+  color: #213243;
+}
+
+.baseline-countdown-continue {
+  background: #0e5d66;
+  color: #ffffff;
+}
+
+.baseline-countdown-continue:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

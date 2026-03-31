@@ -2,7 +2,7 @@
   const DEFAULT_BACKEND_BASE_URL = "https://cse-480-final-project.onrender.com";
   const INSTALL_TOKEN_KEY = "installToken";
   const BACKEND_BASE_URL_KEY = "backendBaseUrl";
-  const INSTALLATION_COHORT = "treatment";
+  const INSTALLATION_COHORT = "control";
   const BACKEND_ROUTES = {
     "reddit-emotion-arousal-analysis": {
       method: "POST",

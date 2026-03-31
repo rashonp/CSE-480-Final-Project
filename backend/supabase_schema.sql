@@ -3,10 +3,21 @@ create extension if not exists pgcrypto;
 create table if not exists public.installations (
   id uuid primary key default gen_random_uuid(),
   install_token_hash text not null unique,
+  cohort text not null default 'treatment' check (cohort in ('control', 'treatment')),
   trigger_topics text not null default '',
   popup_threshold double precision not null default 0.1,
   created_at timestamptz not null default now()
 );
+
+alter table public.installations
+  add column if not exists cohort text;
+
+update public.installations
+set cohort = 'treatment'
+where cohort is null or btrim(cohort) = '';
+
+alter table public.installations
+  alter column cohort set default 'treatment';
 
 create table if not exists public.reflections (
   id uuid primary key default gen_random_uuid(),

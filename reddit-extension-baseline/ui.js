@@ -3,8 +3,26 @@
   if (!app) return;
 
   const COMMENT_ACTION_PATTERN =
-    /reply|comment|add a comment|leave a comment|join the conversation|content creation input/i;
-  const COMMENT_SUBMIT_PATTERN = /\b(comment|reply)\b/i;
+    /^(reply|comment|add\s+(a\s+)?comment|leave\s+(a\s+)?comment|join\s+the\s+conversation)$/i;
+  const COMMENT_SUBMIT_PATTERN = /^(comment|reply)$/i;
+  const COMMENT_CONTAINER_SELECTOR = [
+    "shreddit-post",
+    "shreddit-comment",
+    "shreddit-comment-composer",
+    "shreddit-composer",
+    "shreddit-simple-composer",
+    "faceplate-form",
+    "form",
+  ].join(", ");
+  const COMMENT_TEXT_FIELD_SELECTOR =
+    'textarea, [contenteditable="true"], [role="textbox"], [name="content"]';
+  const COMMENT_TEXT_FIELD_HINT_SELECTOR = [
+    '[placeholder*="conversation" i]',
+    '[placeholder*="comment" i]',
+    '[aria-placeholder*="conversation" i]',
+    '[aria-placeholder*="comment" i]',
+    '[aria-label*="content creation input" i]',
+  ].join(", ");
   const RECENT_COMMENT_CAPTURE_TTL_MS = 15 * 1000;
 
   app.getEventPathElements = (event) => {
@@ -50,15 +68,38 @@
     );
     if (!composer) return null;
 
-    const field = composer.matches(
-      'textarea, [contenteditable="true"], [role="textbox"], [name="content"]',
-    )
+    const isExplicitComposer = composer.matches(
+      "shreddit-comment-composer, shreddit-composer, shreddit-simple-composer",
+    );
+    const fieldSelector = isExplicitComposer
+      ? COMMENT_TEXT_FIELD_SELECTOR
+      : COMMENT_TEXT_FIELD_HINT_SELECTOR;
+    const field = composer.matches(fieldSelector)
       ? composer
-      : composer.querySelector(
-          'textarea, [contenteditable="true"], [role="textbox"], [name="content"]',
-        );
+      : composer.querySelector(fieldSelector);
 
     return field ? composer : null;
+  };
+
+  app.isCommentActionElement = (action) => {
+    if (!action?.closest) return false;
+    if (!action.closest(COMMENT_CONTAINER_SELECTOR)) return false;
+    return COMMENT_ACTION_PATTERN.test(app.getActionLabel(action));
+  };
+
+  app.getComposerIntentElement = (element) => {
+    const composer = app.getCommentComposer(element);
+    if (composer) return composer;
+
+    if (element.matches?.("shreddit-simple-composer")) {
+      return element;
+    }
+
+    if (element.matches?.(COMMENT_TEXT_FIELD_HINT_SELECTOR)) {
+      return element;
+    }
+
+    return null;
   };
 
   app.findCommentComposerFromElements = (elements) => {
@@ -224,9 +265,8 @@
     for (const element of elements) {
       const candidate = element.closest?.('button, [role="button"], a[href]');
       if (!candidate) continue;
-
-      const label = app.getActionLabel(candidate);
-      if (!COMMENT_SUBMIT_PATTERN.test(label)) continue;
+      if (!candidate.closest?.(COMMENT_CONTAINER_SELECTOR)) continue;
+      if (!COMMENT_SUBMIT_PATTERN.test(app.getActionLabel(candidate))) continue;
 
       action = candidate;
       break;
@@ -285,33 +325,18 @@
     }
 
     for (const element of elements) {
-      const isComposerHost =
-        element.matches?.("shreddit-simple-composer") ||
-        element.closest?.("shreddit-simple-composer");
-      const looksLikeTextbox =
-        element.matches?.(
-          'textarea, [contenteditable="true"], [role="textbox"], [name="content"]',
-        ) ||
-        element.matches?.(
-          '[placeholder*="conversation" i], [placeholder*="comment" i], [aria-placeholder*="conversation" i], [aria-placeholder*="comment" i], [aria-label*="content creation input" i]',
-        );
-
-      if (isComposerHost || looksLikeTextbox) {
+      const composerIntentElement = app.getComposerIntentElement(element);
+      if (composerIntentElement) {
         return {
           kind: "composer",
-          element: isComposerHost
-            ? element.closest("shreddit-simple-composer") || element
-            : element,
+          element: composerIntentElement,
         };
       }
     }
 
     for (const element of elements) {
       const action = element.closest?.('button, [role="button"], a[href]');
-      if (!action) continue;
-
-      const label = app.getActionLabel(action);
-      if (!COMMENT_ACTION_PATTERN.test(label)) continue;
+      if (!app.isCommentActionElement(action)) continue;
 
       return {
         kind: "reply",

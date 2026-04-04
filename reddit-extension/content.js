@@ -51,5 +51,6 @@
     hasSeenWelcomeLoadPromise: null,
     arousalDialogState: null,
     welcomeDialogState: null,
+    visibleArousalRefreshTimerId: null,
   };
 })();

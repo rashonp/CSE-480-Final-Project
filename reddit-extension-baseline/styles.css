@@ -1,4 +1,11 @@
 .baseline-countdown-overlay {
+  --baseline-modal-surface: #ffffff;
+  --baseline-modal-border: #d6dee6;
+  --baseline-modal-heading: #18222d;
+  --baseline-modal-text: #4a5c6f;
+  --baseline-modal-accent: #0e5d66;
+  --baseline-modal-secondary-bg: #e8edf2;
+  --baseline-modal-secondary-text: #213243;
   position: fixed;
   inset: 0;
   display: none;
@@ -17,29 +24,29 @@
   width: min(420px, 100%);
   padding: 24px;
   border-radius: 18px;
-  background: #ffffff;
+  background: var(--baseline-modal-surface);
   box-shadow: 0 24px 56px rgba(14, 21, 30, 0.24);
-  border: 1px solid #d6dee6;
+  border: 1px solid var(--baseline-modal-border);
   font-family: "Avenir Next", "Segoe UI", sans-serif;
 }
 
 .baseline-countdown-title {
   margin: 0 0 10px;
-  color: #18222d;
+  color: var(--baseline-modal-heading);
   font-size: 24px;
   font-weight: 800;
 }
 
 .baseline-countdown-body {
   margin: 0 0 18px;
-  color: #4a5c6f;
+  color: var(--baseline-modal-text);
   font-size: 15px;
   line-height: 1.6;
 }
 
 .baseline-countdown-timer {
   margin-bottom: 20px;
-  color: #0e5d66;
+  color: var(--baseline-modal-accent);
   font-size: 36px;
   font-weight: 800;
   letter-spacing: 0.06em;
@@ -63,16 +70,32 @@
 }
 
 .baseline-countdown-cancel {
-  background: #e8edf2;
-  color: #213243;
+  background: var(--baseline-modal-secondary-bg);
+  color: var(--baseline-modal-secondary-text);
 }
 
 .baseline-countdown-continue {
-  background: #0e5d66;
+  background: var(--baseline-modal-accent);
   color: #ffffff;
 }
 
 .baseline-countdown-continue:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+@media (prefers-color-scheme: dark) {
+  .baseline-countdown-overlay {
+    --baseline-modal-surface: #0f172a;
+    --baseline-modal-border: #334155;
+    --baseline-modal-heading: #f8fafc;
+    --baseline-modal-text: #cbd5e1;
+    --baseline-modal-accent: #14b8a6;
+    --baseline-modal-secondary-bg: #1e293b;
+    --baseline-modal-secondary-text: #f8fafc;
+  }
+
+  .baseline-countdown-modal {
+    box-shadow: 0 24px 56px rgba(0, 0, 0, 0.55);
+  }
 }

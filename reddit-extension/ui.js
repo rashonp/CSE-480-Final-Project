@@ -48,9 +48,32 @@
     typeof value === "number" ? `${Math.round(value * 100)}%` : "n/a";
 
   const COMMENT_ACTION_PATTERN =
-    /reply|comment|add a comment|leave a comment|join the conversation|content creation input/i;
-  const COMMENT_SUBMIT_PATTERN = /\b(comment|reply)\b/i;
+    /^(reply|comment|add\s+(a\s+)?comment|leave\s+(a\s+)?comment|join\s+the\s+conversation)$/i;
+  const COMMENT_SUBMIT_PATTERN = /^(comment|reply)$/i;
+  const COMMENT_CONTAINER_SELECTOR = [
+    "shreddit-post",
+    "shreddit-comment",
+    "shreddit-comment-composer",
+    "shreddit-composer",
+    "shreddit-simple-composer",
+    "faceplate-form",
+    "form",
+  ].join(", ");
+  const COMMENT_TEXT_FIELD_SELECTOR =
+    'textarea, [contenteditable="true"], [role="textbox"], [name="content"]';
+  const COMMENT_TEXT_FIELD_HINT_SELECTOR = [
+    '[placeholder*="conversation" i]',
+    '[placeholder*="comment" i]',
+    '[aria-placeholder*="conversation" i]',
+    '[aria-placeholder*="comment" i]',
+    '[aria-label*="content creation input" i]',
+  ].join(", ");
   const RECENT_COMMENT_CAPTURE_TTL_MS = 15 * 1000;
+  const VISIBLE_AROUSAL_REFRESH_DEBOUNCE_MS = 300;
+
+  app.getEmotionLabel = (emotionKey) =>
+    EMOTIONS.find((emotion) => emotion.key === emotionKey)?.label ||
+    String(emotionKey || "").trim();
 
   app.closeWelcomeDialog = async () => {
     const dialog = app.state.welcomeDialogState;
@@ -105,7 +128,7 @@
     const intro = document.createElement("div");
     intro.className = "reddit-welcome-intro";
     intro.innerHTML =
-      'Reddit can be a minefield of ragebait and fearmongering. These aren\'t just posts. They are <strong>designed to trigger emotional dysregulation.</strong> We\'re here to help you stay in the driver\'s seat.';
+      "Reddit can be a minefield of ragebait and fearmongering. These aren't just posts. They are <strong>designed to trigger emotional dysregulation.</strong> We're here to help you stay in the driver's seat.";
 
     const steps = document.createElement("div");
     steps.className = "reddit-welcome-steps";
@@ -735,15 +758,38 @@
     );
     if (!composer) return null;
 
-    const field = composer.matches(
-      'textarea, [contenteditable="true"], [role="textbox"], [name="content"]',
-    )
+    const isExplicitComposer = composer.matches(
+      "shreddit-comment-composer, shreddit-composer, shreddit-simple-composer",
+    );
+    const fieldSelector = isExplicitComposer
+      ? COMMENT_TEXT_FIELD_SELECTOR
+      : COMMENT_TEXT_FIELD_HINT_SELECTOR;
+    const field = composer.matches(fieldSelector)
       ? composer
-      : composer.querySelector(
-          'textarea, [contenteditable="true"], [role="textbox"], [name="content"]',
-        );
+      : composer.querySelector(fieldSelector);
 
     return field ? composer : null;
+  };
+
+  app.isCommentActionElement = (action) => {
+    if (!action?.closest) return false;
+    if (!action.closest(COMMENT_CONTAINER_SELECTOR)) return false;
+    return COMMENT_ACTION_PATTERN.test(app.getActionLabel(action));
+  };
+
+  app.getComposerIntentElement = (element) => {
+    const composer = app.getCommentComposer(element);
+    if (composer) return composer;
+
+    if (element.matches?.("shreddit-simple-composer")) {
+      return element;
+    }
+
+    if (element.matches?.(COMMENT_TEXT_FIELD_HINT_SELECTOR)) {
+      return element;
+    }
+
+    return null;
   };
 
   app.findCommentComposerFromElements = (elements) => {
@@ -825,7 +871,9 @@
     if (permalink) {
       try {
         const absolute = new URL(permalink, window.location.origin).href;
-        const match = absolute.match(/\/comments\/[a-z0-9]+\/[^/]*\/([a-z0-9]+)\//i);
+        const match = absolute.match(
+          /\/comments\/[a-z0-9]+\/[^/]*\/([a-z0-9]+)\//i,
+        );
         if (match) return match[1].toLowerCase();
         return app.normalizePostUrl(absolute);
       } catch {
@@ -917,9 +965,8 @@
     for (const element of elements) {
       const candidate = element.closest?.('button, [role="button"], a[href]');
       if (!candidate) continue;
-
-      const label = app.getActionLabel(candidate);
-      if (!COMMENT_SUBMIT_PATTERN.test(label)) continue;
+      if (!candidate.closest?.(COMMENT_CONTAINER_SELECTOR)) continue;
+      if (!COMMENT_SUBMIT_PATTERN.test(app.getActionLabel(candidate))) continue;
 
       action = candidate;
       break;
@@ -928,7 +975,8 @@
     if (!action) return null;
 
     const composer =
-      app.getCommentComposer(action) || app.findCommentComposerFromElements(elements);
+      app.getCommentComposer(action) ||
+      app.findCommentComposerFromElements(elements);
     if (!composer) return null;
 
     const commentText = app.extractComposerText(composer);
@@ -961,7 +1009,10 @@
     const context = app.getCommentGuardContext(event);
     if (context?.post && context?.postId) {
       try {
-        const details = await app.ensureArousalDetails(context.post, context.postId);
+        const details = await app.ensureArousalDetails(
+          context.post,
+          context.postId,
+        );
         payload.arousal_score =
           typeof details?.finalScore === "number" ? details.finalScore : null;
         payload.content_signal_score =
@@ -971,7 +1022,10 @@
         payload.llm_contribution_score =
           typeof details?.llmScore === "number" ? details.llmScore : null;
       } catch (error) {
-        console.warn("Could not attach arousal details to comment activity.", error);
+        console.warn(
+          "Could not attach arousal details to comment activity.",
+          error,
+        );
       }
     }
 
@@ -1000,34 +1054,18 @@
     }
 
     for (const element of elements) {
-      const isComposerHost =
-        element.matches?.("shreddit-simple-composer") ||
-        element.closest?.("shreddit-simple-composer");
-      const looksLikeTextbox =
-        element.matches?.(
-          'textarea, [contenteditable="true"], [role="textbox"], [name="content"]',
-        ) ||
-        element.matches?.(
-          '[placeholder*="conversation" i], [placeholder*="comment" i], [aria-placeholder*="conversation" i], [aria-placeholder*="comment" i], [aria-label*="content creation input" i]',
-        );
-
-      if (isComposerHost || looksLikeTextbox) {
+      const composerIntentElement = app.getComposerIntentElement(element);
+      if (composerIntentElement) {
         return {
           kind: "composer",
-          element: isComposerHost
-            ? element.closest("shreddit-simple-composer") || element
-            : element,
+          element: composerIntentElement,
         };
       }
     }
 
     for (const element of elements) {
       const action = element.closest?.('button, [role="button"], a[href]');
-      if (!action) continue;
-
-      const label = app.getActionLabel(action);
-
-      if (!COMMENT_ACTION_PATTERN.test(label)) continue;
+      if (!app.isCommentActionElement(action)) continue;
 
       return {
         kind: "reply",
@@ -1074,9 +1112,7 @@
     const badge = post.querySelector(".reddit-arousal-badge");
     const panel = post.querySelector(".reddit-sentiment-panel");
     if (badge && panel) {
-      const percent = Math.round(details.finalScore * 100);
-      badge.className = `reddit-arousal-badge ${app.getScoreClass(details.finalScore)}`;
-      badge.textContent = `Emotional Trigger Score: ${percent}%`;
+      await app.updateArousalBadgeText(postId, badge, details.finalScore);
       app.renderArousalTooltip(post, panel, details);
     }
 
@@ -1178,7 +1214,9 @@
               typeof triggerIntensity === "number" ? triggerIntensity : null,
             summary: String(summaryPayload.summary || "").trim(),
             arousalScore:
-              typeof details?.finalScore === "number" ? details.finalScore : null,
+              typeof details?.finalScore === "number"
+                ? details.finalScore
+                : null,
             genericArousalScore:
               typeof details?.genericLlmScore === "number"
                 ? details.genericLlmScore
@@ -1259,8 +1297,7 @@
         triggerIntensity,
         checkInNote,
         reappraisalStep,
-      } =
-        await app.showArousalDialog(percent, currentEmotion);
+      } = await app.showArousalDialog(percent, currentEmotion);
 
       if (proceed) {
         await app.markArousalPromptShown(postId);
@@ -1297,6 +1334,13 @@
         button.textContent?.trim().toLowerCase() === emotionKey?.toLowerCase();
       button.classList.toggle("active", Boolean(isActive));
     });
+
+    const badge = post.querySelector(".reddit-arousal-badge");
+    if (badge && emotionKey) {
+      badge.textContent = `You labeled this post: ${app.getEmotionLabel(
+        emotionKey,
+      )}`;
+    }
   };
 
   app.attachGlobalArousalCommentGuard = () => {
@@ -1340,6 +1384,16 @@
     document.body.dataset.commentSubmissionCaptureAttached = "true";
   };
 
+  app.updateArousalBadgeText = async (postId, badge, score) => {
+    const savedEmotion = await app.loadEmotionAsync(postId);
+    if (!badge.isConnected) return;
+
+    badge.className = `reddit-arousal-badge ${app.getScoreClass(score)}`;
+    badge.textContent = savedEmotion
+      ? `You labeled this post: ${app.getEmotionLabel(savedEmotion)}`
+      : `Emotional Trigger Score: ${Math.round(score * 100)}%`;
+  };
+
   app.renderArousal = async (post, postId, badge, panel) => {
     const text = app.extractPostText(post);
     if (!text) {
@@ -1357,10 +1411,58 @@
 
     if (!badge.isConnected) return;
 
-    const percent = Math.round(details.finalScore * 100);
-    badge.className = `reddit-arousal-badge ${app.getScoreClass(details.finalScore)}`;
-    badge.textContent = `Emotional Trigger Score: ${percent}%`;
+    await app.updateArousalBadgeText(postId, badge, details.finalScore);
     app.renderArousalTooltip(post, panel, details);
+  };
+
+  app.isPostInViewport = (post) => {
+    if (!post?.isConnected) return false;
+
+    const rect = post.getBoundingClientRect();
+    const viewportHeight =
+      window.innerHeight || document.documentElement?.clientHeight || 0;
+    const viewportWidth =
+      window.innerWidth || document.documentElement?.clientWidth || 0;
+
+    if (rect.width <= 0 || rect.height <= 0) return false;
+
+    return (
+      rect.bottom >= 0 &&
+      rect.top <= viewportHeight &&
+      rect.right >= 0 &&
+      rect.left <= viewportWidth
+    );
+  };
+
+  app.refreshVisibleArousalScores = () => {
+    if (app.state.visibleArousalRefreshTimerId !== null) {
+      window.clearTimeout(app.state.visibleArousalRefreshTimerId);
+    }
+
+    app.state.visibleArousalRefreshTimerId = window.setTimeout(() => {
+      app.state.visibleArousalRefreshTimerId = null;
+
+      document.querySelectorAll("shreddit-post").forEach((post) => {
+        const panel = post.querySelector(".reddit-sentiment-panel");
+        const badge = post.querySelector(".reddit-arousal-badge");
+        const postId = app.getPostId(post);
+        if (!panel || !badge || !postId) return;
+
+        if (!app.isPostInViewport(post)) {
+          badge.className = "reddit-arousal-badge stale";
+          badge.textContent =
+            "User Profile Changed: reload/click post to update score";
+          panel.dataset.hasArousalTooltip = "false";
+          return;
+        }
+
+        badge.className = "reddit-arousal-badge pending";
+        badge.textContent = "Emotional Trigger Score: analyzing...";
+        panel.dataset.hasArousalTooltip = "false";
+
+        void app.renderArousal(post, postId, badge, panel);
+      });
+    }, VISIBLE_AROUSAL_REFRESH_DEBOUNCE_MS);
   };
 
   app.createEmotionBar = (post, postId) => {

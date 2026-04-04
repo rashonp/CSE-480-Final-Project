@@ -7,7 +7,7 @@
   app.constants = {
     MAX_TEXT_LENGTH: 2000,
     SHOWN_COMMENT_COOLDOWNS_KEY: "shownCommentCooldowns",
-    COUNTDOWN_SECONDS: 3,
+    COUNTDOWN_SECONDS: 45,
   };
 
   app.state = {

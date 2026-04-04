@@ -346,6 +346,8 @@
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== "local") return;
 
+    let shouldRefreshVisibleScores = false;
+
     if (Object.prototype.hasOwnProperty.call(changes, PROFILE_ENTRIES_KEY)) {
       const nextValue = Array.isArray(changes[PROFILE_ENTRIES_KEY]?.newValue)
         ? changes[PROFILE_ENTRIES_KEY].newValue
@@ -364,6 +366,7 @@
       );
       app.state.profileEntriesLoadPromise = Promise.resolve(profileEntries);
       app.invalidateArousalDetails();
+      shouldRefreshVisibleScores = true;
     }
 
     if (
@@ -376,6 +379,7 @@
         app.state.userReportedTriggers,
       );
       app.invalidateArousalDetails();
+      shouldRefreshVisibleScores = true;
     }
 
     if (
@@ -391,6 +395,13 @@
       app.state.arousalPromptThresholdLoadPromise = Promise.resolve(
         app.state.arousalPromptThreshold,
       );
+    }
+
+    if (
+      shouldRefreshVisibleScores &&
+      typeof app.refreshVisibleArousalScores === "function"
+    ) {
+      app.refreshVisibleArousalScores();
     }
   });
 })();

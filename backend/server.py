@@ -49,13 +49,19 @@ Guidelines:
 - The generic score should only use the post text.
 - The personalized score is an additional personalization adjustment, not a second total score.
 - The total LLM score should be interpreted as generic_arousal_score + personalized_arousal_score, clamped to 1.
-- The personalized score should use the similarity of this post to the user's prior labeled posts and user-reported triggers.
-- If the personalization context is blank or unrelated, personalized_arousal_score should be 0 or very close to 0.
+- The personalized score should strongly use overlap with the user's prior labeled posts and user-reported triggers.
+- Treat user-reported triggers as high-priority evidence. If the post clearly touches a listed trigger, assign a noticeable personalized_arousal_score even when the generic score is low or medium.
+- Use prior labeled posts to infer recurring patterns in what tends to activate this user, especially repeated topics, social dynamics, or emotional themes.
+- Personalized scoring rubric:
+  - 0.00: no meaningful overlap with user-specific context
+  - 0.00-0.25: weak or indirect overlap
+  - 0.30-0.55: clear overlap with a trigger or prior pattern
+  - 0.60-1.00: strong direct overlap with a major trigger or repeated high-intensity pattern
+- If the personalization context is blank or unrelated, personalized_arousal_score should be 0.
 - If user-reported triggers are blank, ignore them.
 - If prior labeled post history is blank, ignore it.
-- Do not assume the user always reacts strongly to related topics; only adjust when the similarity is meaningful.
-- Keep personalized_arousal_score smaller than the generic score unless the match is unusually strong.
-- If unsure, default to medium (0.4-0.6).
+- Do not assume the user always reacts strongly to related topics; only increase personalization when the overlap is concrete enough to explain briefly in personalized_reason.
+- It is acceptable for personalized_arousal_score to be equal to or larger than generic_arousal_score when the user-specific match is strong.
 
 User-reported triggers:
 \"\"\"

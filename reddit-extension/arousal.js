@@ -3,6 +3,7 @@
   if (!app) return;
 
   const { LOW_SCORE_CACHE_TTL_MS, LLM_AROUSAL_CACHE_TTL_MS } = app.constants;
+  const MIN_CONTENT_SIGNAL_ENGAGEMENT = 25;
 
   app.getPostId = (post) => {
     const link = post.querySelector('a[href*="/comments/"]');
@@ -219,6 +220,10 @@
   app.computeHeuristicArousalScore = async (post, postId) => {
     const comments = app.getCommentCount(post);
     const score = Math.max(0, app.getPostScore(post));
+    if (comments + score < MIN_CONTENT_SIGNAL_ENGAGEMENT) {
+      return 0;
+    }
+
     const ratioSignal = app.clamp01(comments / Math.max(score, 1));
     const lowScoreConcentration = await app.getLowScoreConcentration(postId);
     return app.clamp01(ratioSignal * 0.5 + lowScoreConcentration * 0.5);
